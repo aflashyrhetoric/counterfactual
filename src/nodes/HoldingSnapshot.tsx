@@ -1,0 +1,13 @@
+import { Handle, Position, type NodeProps } from '@xyflow/react';
+
+import { type HoldingSnapshotNode } from './types';
+
+export function HoldingSnapshot({ data }: NodeProps<HoldingSnapshotNode>) {
+  return (
+    <div className="react-flow__node-default h-[100px]">
+      <input type="text" defaultValue={data.label} />
+
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
