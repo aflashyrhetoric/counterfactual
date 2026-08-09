@@ -35,6 +35,13 @@ export function HoldingSnapshot({ id, data }: NodeProps<HoldingSnapshotNode>) {
       holdings: data.holdings.map((h, i) => (i === index ? { ...h, ...partial } : h)),
     }));
 
+  const updateHoldingTicker = (index: number, ticker: string) =>
+    patch((data) => ({
+      holdings: data.holdings.map((h, i) =>
+        i === index ? { ...h, ticker, lots: h.lots.map((l) => ({ ...l, ticker })) } : h
+      ),
+    }));
+
   const updateLot = (holdingIndex: number, lotIndex: number, partial: Partial<Lot>) =>
     patch((data) => ({
       holdings: data.holdings.map((h, i) =>
@@ -59,7 +66,9 @@ export function HoldingSnapshot({ id, data }: NodeProps<HoldingSnapshotNode>) {
   const removeLot = (holdingIndex: number, lotIndex: number) =>
     patch((data) => ({
       holdings: data.holdings.map((h, i) =>
-        i === holdingIndex ? { ...h, lots: h.lots.filter((_, j) => j !== lotIndex) } : h
+        i === holdingIndex && h.lots.length > 1
+          ? { ...h, lots: h.lots.filter((_, j) => j !== lotIndex) }
+          : h
       ),
     }));
 
@@ -130,7 +139,7 @@ export function HoldingSnapshot({ id, data }: NodeProps<HoldingSnapshotNode>) {
               <div className="flex items-center gap-2">
                 <Input
                   value={holding.ticker}
-                  onChange={(e) => updateHolding(hIndex, { ticker: e.target.value.toUpperCase() })}
+                  onChange={(e) => updateHoldingTicker(hIndex, e.target.value.toUpperCase())}
                   placeholder="Ticker"
                   className="nodrag h-7 uppercase"
                 />
@@ -147,12 +156,12 @@ export function HoldingSnapshot({ id, data }: NodeProps<HoldingSnapshotNode>) {
               <div className="flex flex-col gap-1.5">
                 {holding.lots.map((lot, lIndex) => (
                   <div key={lIndex} className="flex items-center gap-1.5">
-                    <Input
+                    {/* <Input
                       value={lot.ticker}
                       onChange={(e) => updateLot(hIndex, lIndex, { ticker: e.target.value.toUpperCase() })}
                       placeholder="Lot ticker"
                       className="nodrag h-7 w-16 text-xs uppercase"
-                    />
+                    /> */}
                     <Input
                       type="number"
                       value={lot.quantity}
@@ -178,8 +187,9 @@ export function HoldingSnapshot({ id, data }: NodeProps<HoldingSnapshotNode>) {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="nodrag text-muted-foreground hover:text-destructive"
+                      className="nodrag text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
                       onClick={() => removeLot(hIndex, lIndex)}
+                      disabled={holding.lots.length <= 1}
                     >
                       <Trash2 className="size-3.5" />
                     </Button>
