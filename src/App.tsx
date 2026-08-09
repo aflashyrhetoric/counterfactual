@@ -20,6 +20,7 @@ import { initialEdges, edgeTypes } from './edges';
 import { Button } from './components/ui/button';
 import type { HoldingSnapshotNode } from './nodes/types';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 import { findOpenSpot, getNodeId } from './lib/flow';
 
 function Flow() {
@@ -45,7 +46,12 @@ function Flow() {
       id: getNodeId(),
       type: 'holding-snapshot',
       position,
-      data: { label: 'Holding Snapshot' },
+      data: {
+        label: 'Holding Snapshot',
+        date: format(new Date(), 'yyyy-MM-dd'),
+        holdings: [],
+        settlement_fund: 0,
+      },
     };
 
     setNodes((nodes) => nodes.concat(newNode));
@@ -62,6 +68,9 @@ function Flow() {
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       fitView
+      panOnScroll
+      selectionOnDrag
+      panOnDrag={false}
     >
       <Panel position="top-left">
         <Button onClick={addHoldingSnapshotNode}>
