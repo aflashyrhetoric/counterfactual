@@ -22,6 +22,7 @@ import type { HoldingSnapshotNode } from './nodes/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { findOpenSpot, getNodeId } from './lib/flow';
+import { useHoldingSnapshotStore } from './store/holdingSnapshots';
 
 function Flow() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -29,6 +30,7 @@ function Flow() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   const { getIntersectingNodes, screenToFlowPosition } = useReactFlow();
+  const initHolding = useHoldingSnapshotStore((s) => s.initHolding);
 
   const onConnect: OnConnect = useCallback(
     (connection) => setEdges((edges) => addEdge(connection, edges)),
@@ -41,17 +43,18 @@ function Flow() {
       y: window.innerHeight / 2,
     });
     const position = findOpenSpot(getIntersectingNodes, center);
+    const id = getNodeId();
+
+    initHolding(id, {
+      label: 'Holding Snapshot',
+      date: format(new Date(), 'yyyy-MM-dd'),
+    });
 
     const newNode: HoldingSnapshotNode = {
-      id: getNodeId(),
+      id,
       type: 'holding-snapshot',
       position,
-      data: {
-        label: 'Holding Snapshot',
-        date: format(new Date(), 'yyyy-MM-dd'),
-        holdings: [],
-        settlement_fund: 0,
-      },
+      data: {},
     };
 
     setNodes((nodes) => nodes.concat(newNode));

@@ -20,5 +20,5 @@ export type HoldingSnapshotNodeData = {
 }
 
 export type PositionLoggerNode = Node<{ label: string }, 'position-logger'>;
-export type HoldingSnapshotNode = Node<HoldingSnapshotNodeData, 'holding-snapshot'>;
+export type HoldingSnapshotNode = Node<Record<string, never>, 'holding-snapshot'>;
 export type AppNode = BuiltInNode | PositionLoggerNode | HoldingSnapshotNode;
