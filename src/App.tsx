@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -12,6 +12,7 @@ import {
   type OnConnect,
   Panel,
 } from '@xyflow/react';
+import { Save } from 'lucide-react';
 
 import '@xyflow/react/dist/style.css';
 
@@ -23,14 +24,52 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { findOpenSpot, getNodeId } from './lib/flow';
 import { useHoldingSnapshotStore } from './store/holdingSnapshots';
+import { loadCanvasState, saveCanvasState } from './lib/persistence';
 
 function Flow() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
 
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [saving, setSaving] = useState(false);
 
-  const { getIntersectingNodes, screenToFlowPosition } = useReactFlow();
+  const { getIntersectingNodes, screenToFlowPosition, fitView } = useReactFlow();
   const initHolding = useHoldingSnapshotStore((s) => s.initHolding);
+  const loadSnapshots = useHoldingSnapshotStore((s) => s.loadSnapshots);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadCanvasState()
+      .then((state) => {
+        if (!state || cancelled) return;
+        setNodes(state.nodes);
+        setEdges(state.edges);
+        loadSnapshots(state.snapshots);
+        requestAnimationFrame(() => fitView({ maxZoom: 1 }));
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : 'Failed to load saved canvas.'));
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      await saveCanvasState({
+        nodes,
+        edges,
+        snapshots: useHoldingSnapshotStore.getState().snapshots,
+      });
+      toast.success('Canvas saved.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save canvas.');
+    } finally {
+      setSaving(false);
+    }
+  }, [nodes, edges]);
 
   const onConnect: OnConnect = useCallback(
     (connection) => setEdges((edges) => addEdge(connection, edges)),
@@ -61,6 +100,8 @@ function Flow() {
     toast.success("Holding node added.");
   }
 
+  // const [addActionModalOpen]
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -70,14 +111,28 @@ function Flow() {
       edgeTypes={edgeTypes}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      onConnectEnd={useCallback(
+        (event, connectionState) => {
+          toast.success("Connection made!");
+          console.log({
+            event, connectionState
+          })
+        },
+        []
+      )}
       fitView
+      fitViewOptions={{ maxZoom: 1 }}
       panOnScroll
       selectionOnDrag
       panOnDrag={false}
     >
-      <Panel position="top-left">
+      <Panel position="top-left" className="flex gap-2">
         <Button onClick={addHoldingSnapshotNode}>
           Add Holding
+        </Button>
+        <Button variant="outline" onClick={handleSave} disabled={saving}>
+          <Save className={saving ? 'animate-pulse' : undefined} />
+          {saving ? 'Saving…' : 'Save'}
         </Button>
       </Panel>
 

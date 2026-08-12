@@ -16,7 +16,8 @@ export type HoldingSnapshotNodeData = {
     label: string;
     date: string; // yyyy-mm-dd, the date of the snapshot
     holdings: StockHolding[];
-    settlement_fund: number; // cash available for trading (rounded to dollars) 
+    settlement_fund: number; // cash available for trading (rounded to dollars)
+    marketOpenPrices: Record<StockTicker, number> | null; // dollar price of each ticker at market open on `date`
 }
 
 export type PositionLoggerNode = Node<{ label: string }, 'position-logger'>;

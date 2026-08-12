@@ -12,7 +12,33 @@ function emptyHolding(): StockHolding {
 }
 
 export function emptyHoldingSnapshot(): HoldingSnapshotNodeData {
-  return { label: '', date: '', holdings: [], settlement_fund: 0 };
+  return { label: '', date: '', holdings: [], settlement_fund: 0, marketOpenPrices: null };
+}
+
+// TEMP: hard-coded so other components have something real to read while
+// we build them out. Delete once snapshots are created for real.
+export const DEMO_HOLDING_SNAPSHOT_ID = 'holding-demo';
+
+function demoHoldingSnapshot(): HoldingSnapshotNodeData {
+  return {
+    label: 'Demo Snapshot',
+    date: '2026-08-11',
+    settlement_fund: 5000,
+    marketOpenPrices: null,
+    holdings: [
+      {
+        ticker: 'AAPL',
+        lots: [
+          { ticker: 'AAPL', quantity: 10, purchasePrice: 150 },
+          { ticker: 'AAPL', quantity: 5, purchasePrice: 170 },
+        ],
+      },
+      {
+        ticker: 'VTI',
+        lots: [{ ticker: 'VTI', quantity: 20, purchasePrice: 220 }],
+      },
+    ],
+  };
 }
 
 type HoldingSnapshotStore = {
@@ -20,10 +46,12 @@ type HoldingSnapshotStore = {
 
   initHolding: (id: string, initial?: Partial<HoldingSnapshotNodeData>) => void;
   removeHolding: (id: string) => void;
+  loadSnapshots: (snapshots: Record<string, HoldingSnapshotNodeData>) => void;
 
   updateLabel: (id: string, label: string) => void;
   updateDate: (id: string, date: string) => void;
   updateSettlementFund: (id: string, value: number) => void;
+  setMarketOpenPrices: (id: string, prices: Record<string, number>) => void;
 
   addHolding: (id: string) => void;
   removeStockHolding: (id: string, holdingIndex: number) => void;
@@ -36,7 +64,9 @@ type HoldingSnapshotStore = {
 
 export const useHoldingSnapshotStore = create<HoldingSnapshotStore>()(
   immer((set) => ({
-    snapshots: {},
+    snapshots: {
+      [DEMO_HOLDING_SNAPSHOT_ID]: demoHoldingSnapshot(),
+    },
 
     initHolding: (id, initial) =>
       set((s) => {
@@ -46,6 +76,11 @@ export const useHoldingSnapshotStore = create<HoldingSnapshotStore>()(
     removeHolding: (id) =>
       set((s) => {
         delete s.snapshots[id];
+      }),
+
+    loadSnapshots: (snapshots) =>
+      set((s) => {
+        s.snapshots = snapshots;
       }),
 
     updateLabel: (id, label) =>
@@ -61,6 +96,14 @@ export const useHoldingSnapshotStore = create<HoldingSnapshotStore>()(
     updateSettlementFund: (id, value) =>
       set((s) => {
         s.snapshots[id].settlement_fund = value;
+      }),
+
+    setMarketOpenPrices: (id, prices) =>
+      set((s) => {
+        s.snapshots[id].marketOpenPrices = {
+          ...s.snapshots[id].marketOpenPrices,
+          ...prices,
+        };
       }),
 
     addHolding: (id) =>

@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useDebounce } from '@uidotdev/usehooks';
 import { format, parseISO } from 'date-fns';
-import { CalendarIcon, Plus, Trash2 } from 'lucide-react';
+import { CalendarIcon, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { type HoldingSnapshotNode, type Lot, type StockHolding } from './types';
 import { useHoldingSnapshot, useHoldingSnapshotStore } from '@/store/holdingSnapshots';
+import { fetchMarketOpenPrices } from '@/lib/massive';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -32,6 +34,8 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
   const updateDate = useHoldingSnapshotStore((s) => s.updateDate);
   const updateSettlementFund = useHoldingSnapshotStore((s) => s.updateSettlementFund);
   const addHolding = useHoldingSnapshotStore((s) => s.addHolding);
+  const setMarketOpenPrices = useHoldingSnapshotStore((s) => s.setMarketOpenPrices);
+  const [fetchingPrices, setFetchingPrices] = useState(false);
 
   const [label, setLabel] = useDebouncedField(
     data.label,
@@ -47,18 +51,50 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
     [id, updateDate]
   );
   const handleAddHolding = useCallback(() => addHolding(id), [id, addHolding]);
+  const handleFetchPrices = useCallback(async () => {
+    const tickers = [...new Set(data.holdings.map((h) => h.ticker).filter(Boolean))];
+    if (tickers.length === 0 || !data.date) return;
+
+    setFetchingPrices(true);
+    try {
+      const results = await fetchMarketOpenPrices(tickers, data.date);
+      const prices: Record<string, number> = {};
+      const failed: string[] = [];
+      for (const r of results) {
+        if (typeof r.open === 'number') prices[r.ticker] = r.open;
+        else failed.push(r.ticker);
+      }
+      if (Object.keys(prices).length > 0) setMarketOpenPrices(id, prices);
+      if (failed.length > 0) toast.error(`Couldn't fetch prices for ${failed.join(', ')}`);
+      console.log('marketOpenPrices', prices);
+    } finally {
+      setFetchingPrices(false);
+    }
+  }, [id, data.holdings, data.date, setMarketOpenPrices]);
 
   const selectedDate = data.date ? parseISO(data.date) : undefined;
 
   return (
     <Card className="w-80 py-3 gap-3">
       <CardHeader className="flex flex-col gap-2 px-3">
-        <Input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="Untitled snapshot"
-          className="nodrag h-7 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:bg-input/50 focus-visible:px-2.5"
-        />
+        <div className="flex items-center justify-between gap-2">
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Untitled snapshot"
+            className="nodrag h-7 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:bg-input/50 focus-visible:px-2.5"
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="nodrag shrink-0 text-muted-foreground"
+            title="Fetch market open prices"
+            onClick={handleFetchPrices}
+            disabled={fetchingPrices || !data.date || data.holdings.length === 0}
+          >
+            <RefreshCw className={fetchingPrices ? 'animate-spin' : undefined} />
+          </Button>
+        </div>
 
         <Popover>
           <PopoverTrigger
@@ -112,7 +148,7 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
         </div>
       </CardContent>
 
-      <Handle type="source" position={Position.Bottom} />
+      <Handle type="source" position={Position.Right} />
     </Card>
   );
 }
