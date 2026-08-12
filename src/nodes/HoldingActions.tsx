@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { addEdge, Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import { useDebounce } from '@uidotdev/usehooks';
 import { format, parseISO } from 'date-fns';
-import { CalendarIcon, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { CalendarIcon, Minus, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { type HoldingSnapshotNode, type Lot, type StockHolding } from './types';
-import { useHoldingSnapshot, useHoldingSnapshotStore } from '@/store/holdingSnapshots';
+import { type HoldingActionsNode } from './types';
+import {
+  useHoldingActions,
+  useHoldingActionsStore,
+  type ActionsHolding,
+  type ActionsLot,
+} from '@/store/holdingActions';
+import { useHoldingSnapshotStore } from '@/store/holdingSnapshots';
 import { fetchMarketOpenPrices } from '@/lib/massive';
+import { DEFAULT_NODE_WIDTH, NODE_SPACING, findOpenSpot, getNodeId } from '@/lib/flow';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -25,9 +32,8 @@ function useDebouncedField<T>(committedValue: T, commit: (value: T) => void, del
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced]);
 
-  // Resync when the store changes from outside this field (e.g. hydrating
-  // from a saved canvas into an already-mounted node) rather than through
-  // our own commit.
+  // Resync when the store changes from outside this field (e.g. the buy/sell
+  // buttons mutating quantity directly) rather than through our own commit.
   useEffect(() => {
     setLocal(committedValue);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -36,13 +42,16 @@ function useDebouncedField<T>(committedValue: T, commit: (value: T) => void, del
   return [local, setLocal] as const;
 }
 
-export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
-  const data = useHoldingSnapshot(id);
-  const updateLabel = useHoldingSnapshotStore((s) => s.updateLabel);
-  const updateDate = useHoldingSnapshotStore((s) => s.updateDate);
-  const updateSettlementFund = useHoldingSnapshotStore((s) => s.updateSettlementFund);
-  const addHolding = useHoldingSnapshotStore((s) => s.addHolding);
-  const setMarketOpenPrices = useHoldingSnapshotStore((s) => s.setMarketOpenPrices);
+export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
+  const data = useHoldingActions(id);
+  const updateLabel = useHoldingActionsStore((s) => s.updateLabel);
+  const updateDate = useHoldingActionsStore((s) => s.updateDate);
+  const updateSettlementFund = useHoldingActionsStore((s) => s.updateSettlementFund);
+  const addHolding = useHoldingActionsStore((s) => s.addHolding);
+  const lock = useHoldingActionsStore((s) => s.lock);
+  const setMarketOpenPrices = useHoldingActionsStore((s) => s.setMarketOpenPrices);
+  const initHolding = useHoldingSnapshotStore((s) => s.initHolding);
+  const { getNode, getIntersectingNodes, setNodes, setEdges } = useReactFlow();
   const [fetchingPrices, setFetchingPrices] = useState(false);
 
   const [label, setLabel] = useDebouncedField(
@@ -59,7 +68,9 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
     [id, updateDate]
   );
   const handleAddHolding = useCallback(() => addHolding(id), [id, addHolding]);
+
   const handleFetchPrices = useCallback(async () => {
+    if (data.locked) return;
     const tickers = [...new Set(data.holdings.map((h) => h.ticker).filter(Boolean))];
     if (tickers.length === 0 || !data.date) return;
 
@@ -74,11 +85,37 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
       }
       if (Object.keys(prices).length > 0) setMarketOpenPrices(id, prices);
       if (failed.length > 0) toast.error(`Couldn't fetch prices for ${failed.join(', ')}`);
-      console.log('marketOpenPrices', prices);
     } finally {
       setFetchingPrices(false);
     }
-  }, [id, data.holdings, data.date, setMarketOpenPrices]);
+  }, [id, data.locked, data.holdings, data.date, setMarketOpenPrices]);
+
+  const handleCreateSnapshot = useCallback(() => {
+    if (data.locked) return;
+
+    const self = getNode(id);
+    const origin = self
+      ? { x: self.position.x + DEFAULT_NODE_WIDTH + NODE_SPACING, y: self.position.y }
+      : { x: 0, y: 0 };
+    const position = findOpenSpot(getIntersectingNodes, origin);
+    const newId = getNodeId();
+
+    initHolding(newId, {
+      label: data.label,
+      date: data.date,
+      holdings: data.holdings.map((h) => ({
+        ticker: h.ticker,
+        lots: h.lots.map((l) => ({ ticker: l.ticker, quantity: l.quantity, purchasePrice: l.purchasePrice })),
+      })),
+      settlement_fund: data.settlement_fund,
+      marketOpenPrices: data.marketOpenPrices ? structuredClone(data.marketOpenPrices) : null,
+    });
+
+    setNodes((nodes) => nodes.concat({ id: newId, type: 'holding-snapshot', position, data: {} }));
+    setEdges((edges) => addEdge({ source: id, target: newId, sourceHandle: null, targetHandle: null }, edges));
+
+    lock(id);
+  }, [id, data, getNode, getIntersectingNodes, setNodes, setEdges, initHolding, lock]);
 
   const selectedDate = data.date ? parseISO(data.date) : undefined;
 
@@ -87,29 +124,34 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
       <Handle type="target" position={Position.Left} />
 
       <CardHeader className="flex flex-col gap-2 px-3">
-        <div className="flex items-center justify-between gap-2">
-          <Input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Untitled snapshot"
-            className="nodrag h-7 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:bg-input/50 focus-visible:px-2.5"
-          />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="nodrag shrink-0 text-muted-foreground"
-            title="Fetch market open prices"
-            onClick={handleFetchPrices}
-            disabled={fetchingPrices || !data.date || data.holdings.length === 0}
-          >
-            <RefreshCw className={fetchingPrices ? 'animate-spin' : undefined} />
-          </Button>
-        </div>
+        <Input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Untitled actions"
+          disabled={data.locked}
+          className="nodrag h-7 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:bg-input/50 focus-visible:px-2.5"
+        />
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="nodrag w-fit"
+          onClick={handleFetchPrices}
+          disabled={data.locked || fetchingPrices || !data.date || data.holdings.length === 0}
+        >
+          <RefreshCw className={fetchingPrices ? 'animate-spin' : undefined} />
+          {fetchingPrices ? 'Fetching…' : 'Fetch Prices'}
+        </Button>
 
         <Popover>
           <PopoverTrigger
             render={
-              <Button variant="outline" size="sm" className="nodrag w-fit justify-start font-normal" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="nodrag w-fit justify-start font-normal"
+                disabled={data.locked}
+              />
             }
           >
             <CalendarIcon className="opacity-60" />
@@ -137,6 +179,7 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
               min="0"
               value={settlementFund}
               onChange={(e) => setSettlementFund(Math.round(Number(e.target.value) || 0))}
+              disabled={data.locked}
               className="nodrag pl-5"
             />
           </div>
@@ -147,22 +190,40 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Holdings</span>
-            <Button variant="ghost" size="icon-sm" className="nodrag" onClick={handleAddHolding}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="nodrag"
+              onClick={handleAddHolding}
+              disabled={data.locked}
+            >
               <Plus />
             </Button>
           </div>
 
           {data.holdings.map((holding, hIndex) => (
-            <HoldingCard key={hIndex} nodeId={id} holdingIndex={hIndex} holding={holding} />
+            <ActionsHoldingCard
+              key={hIndex}
+              nodeId={id}
+              holdingIndex={hIndex}
+              holding={holding}
+              locked={data.locked}
+            />
           ))}
         </div>
 
         {data.marketOpenPrices && (
           <>
             <Separator />
-            <MarketOpenPrices prices={data.marketOpenPrices} />
+            <ActionsMarketOpenPrices prices={data.marketOpenPrices} />
           </>
         )}
+
+        <Separator />
+
+        <Button className="nodrag" onClick={handleCreateSnapshot} disabled={data.locked}>
+          {data.locked ? 'Snapshot created' : 'Create New Snapshot'}
+        </Button>
       </CardContent>
 
       <Handle type="source" position={Position.Right} />
@@ -170,7 +231,7 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
   );
 }
 
-function MarketOpenPrices({ prices }: { prices: Record<string, number> }) {
+function ActionsMarketOpenPrices({ prices }: { prices: Record<string, number> }) {
   const entries = Object.entries(prices);
   if (entries.length === 0) return null;
 
@@ -189,18 +250,21 @@ function MarketOpenPrices({ prices }: { prices: Record<string, number> }) {
   );
 }
 
-function HoldingCard({
+function ActionsHoldingCard({
   nodeId,
   holdingIndex,
   holding,
+  locked,
 }: {
   nodeId: string;
   holdingIndex: number;
-  holding: StockHolding;
+  holding: ActionsHolding;
+  locked: boolean;
 }) {
-  const updateHoldingTicker = useHoldingSnapshotStore((s) => s.updateHoldingTicker);
-  const removeStockHolding = useHoldingSnapshotStore((s) => s.removeStockHolding);
-  const addLot = useHoldingSnapshotStore((s) => s.addLot);
+  const updateHoldingTicker = useHoldingActionsStore((s) => s.updateHoldingTicker);
+  const removeStockHolding = useHoldingActionsStore((s) => s.removeStockHolding);
+  const buyNewLot = useHoldingActionsStore((s) => s.buyNewLot);
+  const data = useHoldingActions(nodeId);
 
   const [ticker, setTicker] = useDebouncedField(
     holding.ticker,
@@ -209,11 +273,15 @@ function HoldingCard({
       [nodeId, holdingIndex, updateHoldingTicker]
     )
   );
+  const canRemoveHolding = !locked && holding.lots.every((l) => l.quantity <= 0);
   const handleRemove = useCallback(
     () => removeStockHolding(nodeId, holdingIndex),
     [nodeId, holdingIndex, removeStockHolding]
   );
-  const handleAddLot = useCallback(() => addLot(nodeId, holdingIndex), [nodeId, holdingIndex, addLot]);
+  const handleAddLot = useCallback(() => buyNewLot(nodeId, holdingIndex), [nodeId, holdingIndex, buyNewLot]);
+
+  const price = data.marketOpenPrices?.[holding.ticker];
+  const canAddLot = !locked && price != null && data.settlement_fund >= price;
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl bg-muted/40 p-2.5">
@@ -222,13 +290,15 @@ function HoldingCard({
           value={ticker}
           onChange={(e) => setTicker(e.target.value.toUpperCase())}
           placeholder="Ticker"
+          disabled={locked}
           className="nodrag h-7 uppercase"
         />
         <Button
           variant="ghost"
           size="icon-sm"
-          className="nodrag text-muted-foreground hover:text-destructive"
+          className="nodrag text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
           onClick={handleRemove}
+          disabled={!canRemoveHolding}
         >
           <Trash2 />
         </Button>
@@ -236,51 +306,51 @@ function HoldingCard({
 
       <div className="flex flex-col gap-1.5">
         {holding.lots.map((lot, lIndex) => (
-          <LotRow
+          <ActionsLotRow
             key={lIndex}
             nodeId={nodeId}
             holdingIndex={holdingIndex}
             lotIndex={lIndex}
             lot={lot}
             canRemove={holding.lots.length > 1}
+            locked={locked}
           />
         ))}
         <Button
           variant="ghost"
           size="sm"
-          className="nodrag self-start text-xs text-muted-foreground"
+          className="nodrag self-start text-xs text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
           onClick={handleAddLot}
+          disabled={!canAddLot}
         >
-          <Plus className="size-3.5" /> Add lot
+          <Plus className="size-3.5" /> Add lot (buy at ${price?.toFixed(2) ?? '—'})
         </Button>
       </div>
     </div>
   );
 }
 
-function LotRow({
+function ActionsLotRow({
   nodeId,
   holdingIndex,
   lotIndex,
   lot,
   canRemove,
+  locked,
 }: {
   nodeId: string;
   holdingIndex: number;
   lotIndex: number;
-  lot: Lot;
+  lot: ActionsLot;
   canRemove: boolean;
+  locked: boolean;
 }) {
-  const updateLot = useHoldingSnapshotStore((s) => s.updateLot);
-  const removeLot = useHoldingSnapshotStore((s) => s.removeLot);
+  const updateLot = useHoldingActionsStore((s) => s.updateLot);
+  const removeLot = useHoldingActionsStore((s) => s.removeLot);
+  const buyOneShare = useHoldingActionsStore((s) => s.buyOneShare);
+  const sellOneShare = useHoldingActionsStore((s) => s.sellOneShare);
+  const data = useHoldingActions(nodeId);
 
-  const [quantity, setQuantity] = useDebouncedField(
-    lot.quantity,
-    useCallback(
-      (v: number) => updateLot(nodeId, holdingIndex, lotIndex, { quantity: v }),
-      [nodeId, holdingIndex, lotIndex, updateLot]
-    )
-  );
   const [purchasePrice, setPurchasePrice] = useDebouncedField(
     lot.purchasePrice,
     useCallback(
@@ -292,22 +362,54 @@ function LotRow({
     () => removeLot(nodeId, holdingIndex, lotIndex),
     [nodeId, holdingIndex, lotIndex, removeLot]
   );
+  const handleBuy = useCallback(
+    () => buyOneShare(nodeId, holdingIndex, lotIndex),
+    [nodeId, holdingIndex, lotIndex, buyOneShare]
+  );
+  const handleSell = useCallback(
+    () => sellOneShare(nodeId, holdingIndex, lotIndex),
+    [nodeId, holdingIndex, lotIndex, sellOneShare]
+  );
+
+  const price = data.marketOpenPrices?.[lot.ticker];
+  const canSell = !locked && lot.quantity > 0 && price != null;
+  const canBuy = !locked && lot.quantity < lot.originalQuantity && price != null && data.settlement_fund >= price;
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* <Input
-        value={lot.ticker}
-        onChange={(e) => updateLot(hIndex, lIndex, { ticker: e.target.value.toUpperCase() })}
-        placeholder="Lot ticker"
-        className="nodrag h-7 w-16 text-xs uppercase"
-      /> */}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="nodrag text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+        onClick={handleSell}
+        title="Sell one share"
+        disabled={!canSell}
+      >
+        <Minus className="size-3.5" />
+      </Button>
       <Input
         type="number"
-        value={quantity}
-        onChange={(e) => setQuantity(Number(e.target.value) || 0)}
+        value={lot.quantity}
+        readOnly
+        disabled
+        title={
+          Number.isFinite(lot.originalQuantity)
+            ? `Up to ${lot.originalQuantity} from this session's starting position`
+            : 'Bought this session — trades freely'
+        }
         placeholder="Qty"
         className="nodrag h-7 w-14 text-xs"
       />
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="nodrag text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+        onClick={handleBuy}
+        title="Undo a sell (buy back up to this session's starting quantity)"
+        disabled={!canBuy}
+      >
+        <Plus className="size-3.5" />
+      </Button>
       <div className="relative flex-1">
         <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
           $
@@ -318,6 +420,7 @@ function LotRow({
           value={purchasePrice}
           onChange={(e) => setPurchasePrice(Math.round(Number(e.target.value) || 0))}
           placeholder="Price"
+          disabled={locked}
           className="nodrag h-7 pl-4 text-xs"
         />
       </div>
@@ -326,7 +429,7 @@ function LotRow({
         size="icon-sm"
         className="nodrag text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
         onClick={handleRemove}
-        disabled={!canRemove}
+        disabled={locked || !canRemove || lot.quantity > 0}
       >
         <Trash2 className="size-3.5" />
       </Button>

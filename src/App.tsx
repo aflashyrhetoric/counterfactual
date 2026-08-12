@@ -10,6 +10,7 @@ import {
   useEdgesState,
   useReactFlow,
   type OnConnect,
+  type OnConnectEnd,
   Panel,
 } from '@xyflow/react';
 import { Save } from 'lucide-react';
@@ -24,6 +25,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { findOpenSpot, getNodeId } from './lib/flow';
 import { useHoldingSnapshotStore } from './store/holdingSnapshots';
+import { useHoldingActionsStore } from './store/holdingActions';
 import { loadCanvasState, saveCanvasState } from './lib/persistence';
 
 function Flow() {
@@ -35,6 +37,8 @@ function Flow() {
   const { getIntersectingNodes, screenToFlowPosition, fitView } = useReactFlow();
   const initHolding = useHoldingSnapshotStore((s) => s.initHolding);
   const loadSnapshots = useHoldingSnapshotStore((s) => s.loadSnapshots);
+  const initActions = useHoldingActionsStore((s) => s.initActions);
+  const loadActions = useHoldingActionsStore((s) => s.loadActions);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +49,7 @@ function Flow() {
         setNodes(state.nodes);
         setEdges(state.edges);
         loadSnapshots(state.snapshots);
+        loadActions(state.actions);
         requestAnimationFrame(() => fitView({ maxZoom: 1 }));
       })
       .catch((e) => toast.error(e instanceof Error ? e.message : 'Failed to load saved canvas.'));
@@ -62,6 +67,7 @@ function Flow() {
         nodes,
         edges,
         snapshots: useHoldingSnapshotStore.getState().snapshots,
+        actions: useHoldingActionsStore.getState().actions,
       });
       toast.success('Canvas saved.');
     } catch (e) {
@@ -74,6 +80,36 @@ function Flow() {
   const onConnect: OnConnect = useCallback(
     (connection) => setEdges((edges) => addEdge(connection, edges)),
     [setEdges]
+  );
+
+  const onConnectEnd: OnConnectEnd = useCallback(
+    (event, connectionState) => {
+      if (!connectionState.fromHandle || connectionState.toNode) return;
+      if (connectionState.fromNode?.type !== 'holding-snapshot') return;
+
+      const sourceId = connectionState.fromHandle.nodeId;
+      const sourceData = useHoldingSnapshotStore.getState().snapshots[sourceId];
+      if (!sourceData) return;
+
+      const point = 'changedTouches' in event ? event.changedTouches[0] : event;
+      const origin = screenToFlowPosition({ x: point.clientX, y: point.clientY });
+      const position = findOpenSpot(getIntersectingNodes, origin);
+      const newId = getNodeId();
+
+      initActions(newId, {
+        label: sourceData.label,
+        date: sourceData.date,
+        holdings: structuredClone(sourceData.holdings),
+        settlement_fund: sourceData.settlement_fund,
+        marketOpenPrices: sourceData.marketOpenPrices ? structuredClone(sourceData.marketOpenPrices) : null,
+      });
+
+      setNodes((nodes) => nodes.concat({ id: newId, type: 'holding-actions', position, data: {} }));
+      setEdges((edges) =>
+        addEdge({ source: sourceId, target: newId, sourceHandle: null, targetHandle: null }, edges)
+      );
+    },
+    [screenToFlowPosition, getIntersectingNodes, setNodes, setEdges, initActions]
   );
 
   function addHoldingSnapshotNode() {
@@ -111,15 +147,7 @@ function Flow() {
       edgeTypes={edgeTypes}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
-      onConnectEnd={useCallback(
-        (event, connectionState) => {
-          toast.success("Connection made!");
-          console.log({
-            event, connectionState
-          })
-        },
-        []
-      )}
+      onConnectEnd={onConnectEnd}
       fitView
       fitViewOptions={{ maxZoom: 1 }}
       panOnScroll

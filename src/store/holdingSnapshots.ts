@@ -15,6 +15,11 @@ export function emptyHoldingSnapshot(): HoldingSnapshotNodeData {
   return { label: '', date: '', holdings: [], settlement_fund: 0, marketOpenPrices: null };
 }
 
+// A single shared reference, not a fresh object per call — the selector
+// below must return a referentially stable fallback for unknown ids, or
+// useSyncExternalStore sees a "changed" snapshot on every render and loops.
+const EMPTY_HOLDING_SNAPSHOT = emptyHoldingSnapshot();
+
 // TEMP: hard-coded so other components have something real to read while
 // we build them out. Delete once snapshots are created for real.
 export const DEMO_HOLDING_SNAPSHOT_ID = 'holding-demo';
@@ -144,5 +149,5 @@ export const useHoldingSnapshotStore = create<HoldingSnapshotStore>()(
 );
 
 export function useHoldingSnapshot(id: string): HoldingSnapshotNodeData {
-  return useHoldingSnapshotStore((s) => s.snapshots[id] ?? emptyHoldingSnapshot());
+  return useHoldingSnapshotStore((s) => s.snapshots[id] ?? EMPTY_HOLDING_SNAPSHOT);
 }
