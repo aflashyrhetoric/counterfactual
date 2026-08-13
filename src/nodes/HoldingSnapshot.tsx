@@ -84,7 +84,7 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
 
   return (
     <Card className="w-80 py-3 gap-3">
-      <Handle type="target" position={Position.Left} />
+      <Handle type="target" position={Position.Left} className={`!size-4`} />
 
       <CardHeader className="flex flex-col gap-2 px-3">
         <div className="flex items-center justify-between gap-2">
@@ -165,7 +165,7 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
         )}
       </CardContent>
 
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Right} className={`!size-6`} />
     </Card>
   );
 }

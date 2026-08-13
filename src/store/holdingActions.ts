@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-import type { HoldingSnapshotNodeData, Lot } from '@/nodes/types';
+import type { HoldingSnapshotNodeData, Lot, StockHolding } from '@/nodes/types';
 
 // A lot as tracked inside a HoldingActions node. `originalQuantity` is the
 // quantity this lot had when it was cloned in from the source snapshot —
@@ -16,6 +16,11 @@ export type ActionsHolding = { ticker: string; lots: ActionsLot[] };
 
 export type HoldingActionsNodeData = Omit<HoldingSnapshotNodeData, 'holdings'> & {
   holdings: ActionsHolding[];
+  // Frozen copy of what this session started with (never mutated after
+  // initActions) — the basis for the locked diff view, since it survives
+  // even if a fully-sold-down lot/holding later gets removed from `holdings`.
+  initialHoldings: StockHolding[];
+  initialSettlementFund: number;
   locked: boolean;
 };
 
@@ -24,7 +29,16 @@ function emptyActionsLot(): ActionsLot {
 }
 
 function emptyHoldingActions(): HoldingActionsNodeData {
-  return { label: '', date: '', holdings: [], settlement_fund: 0, marketOpenPrices: null, locked: false };
+  return {
+    label: '',
+    date: '',
+    holdings: [],
+    settlement_fund: 0,
+    marketOpenPrices: null,
+    initialHoldings: [],
+    initialSettlementFund: 0,
+    locked: false,
+  };
 }
 
 // A single shared reference, not a fresh object per call — the selector
@@ -36,6 +50,7 @@ type HoldingActionsStore = {
   actions: Record<string, HoldingActionsNodeData>;
 
   initActions: (id: string, seed: HoldingSnapshotNodeData) => void;
+  removeActions: (id: string) => void;
   loadActions: (actions: Record<string, HoldingActionsNodeData>) => void;
   lock: (id: string) => void;
 
@@ -74,8 +89,18 @@ export const useHoldingActionsStore = create<HoldingActionsStore>()(
             ticker: h.ticker,
             lots: h.lots.map((l) => ({ ...l, originalQuantity: l.quantity })),
           })),
+          initialHoldings: seed.holdings.map((h) => ({
+            ticker: h.ticker,
+            lots: h.lots.map((l) => ({ ...l })),
+          })),
+          initialSettlementFund: seed.settlement_fund,
           locked: false,
         };
+      }),
+
+    removeActions: (id) =>
+      set((s) => {
+        delete s.actions[id];
       }),
 
     loadActions: (actions) =>

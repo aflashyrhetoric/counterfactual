@@ -20,7 +20,7 @@ import '@xyflow/react/dist/style.css';
 import { initialNodes, nodeTypes } from './nodes';
 import { initialEdges, edgeTypes } from './edges';
 import { Button } from './components/ui/button';
-import type { HoldingSnapshotNode } from './nodes/types';
+import type { AppNode, HoldingSnapshotNode } from './nodes/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { findOpenSpot, getNodeId } from './lib/flow';
@@ -36,9 +36,21 @@ function Flow() {
 
   const { getIntersectingNodes, screenToFlowPosition, fitView } = useReactFlow();
   const initHolding = useHoldingSnapshotStore((s) => s.initHolding);
+  const removeHolding = useHoldingSnapshotStore((s) => s.removeHolding);
   const loadSnapshots = useHoldingSnapshotStore((s) => s.loadSnapshots);
   const initActions = useHoldingActionsStore((s) => s.initActions);
+  const removeActions = useHoldingActionsStore((s) => s.removeActions);
   const loadActions = useHoldingActionsStore((s) => s.loadActions);
+
+  const onNodesDelete = useCallback(
+    (deleted: AppNode[]) => {
+      for (const node of deleted) {
+        if (node.type === 'holding-snapshot') removeHolding(node.id);
+        else if (node.type === 'holding-actions') removeActions(node.id);
+      }
+    },
+    [removeHolding, removeActions]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +87,15 @@ function Flow() {
     } finally {
       setSaving(false);
     }
+  }, [nodes, edges]);
+
+  const handleLogState = useCallback(() => {
+    console.log({
+      nodes,
+      edges,
+      snapshots: useHoldingSnapshotStore.getState().snapshots,
+      actions: useHoldingActionsStore.getState().actions,
+    });
   }, [nodes, edges]);
 
   const onConnect: OnConnect = useCallback(
@@ -146,6 +167,7 @@ function Flow() {
       edges={edges}
       edgeTypes={edgeTypes}
       onEdgesChange={onEdgesChange}
+      onNodesDelete={onNodesDelete}
       onConnect={onConnect}
       onConnectEnd={onConnectEnd}
       fitView
@@ -161,6 +183,12 @@ function Flow() {
         <Button variant="outline" onClick={handleSave} disabled={saving}>
           <Save className={saving ? 'animate-pulse' : undefined} />
           {saving ? 'Saving…' : 'Save'}
+        </Button>
+      </Panel>
+
+      <Panel position="top-right">
+        <Button variant="outline" onClick={handleLogState}>
+          Paste To Console
         </Button>
       </Panel>
 

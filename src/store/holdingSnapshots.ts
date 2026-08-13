@@ -20,32 +20,6 @@ export function emptyHoldingSnapshot(): HoldingSnapshotNodeData {
 // useSyncExternalStore sees a "changed" snapshot on every render and loops.
 const EMPTY_HOLDING_SNAPSHOT = emptyHoldingSnapshot();
 
-// TEMP: hard-coded so other components have something real to read while
-// we build them out. Delete once snapshots are created for real.
-export const DEMO_HOLDING_SNAPSHOT_ID = 'holding-demo';
-
-function demoHoldingSnapshot(): HoldingSnapshotNodeData {
-  return {
-    label: 'Demo Snapshot',
-    date: '2026-08-11',
-    settlement_fund: 5000,
-    marketOpenPrices: null,
-    holdings: [
-      {
-        ticker: 'AAPL',
-        lots: [
-          { ticker: 'AAPL', quantity: 10, purchasePrice: 150 },
-          { ticker: 'AAPL', quantity: 5, purchasePrice: 170 },
-        ],
-      },
-      {
-        ticker: 'VTI',
-        lots: [{ ticker: 'VTI', quantity: 20, purchasePrice: 220 }],
-      },
-    ],
-  };
-}
-
 type HoldingSnapshotStore = {
   snapshots: Record<string, HoldingSnapshotNodeData>;
 
@@ -69,9 +43,7 @@ type HoldingSnapshotStore = {
 
 export const useHoldingSnapshotStore = create<HoldingSnapshotStore>()(
   immer((set) => ({
-    snapshots: {
-      [DEMO_HOLDING_SNAPSHOT_ID]: demoHoldingSnapshot(),
-    },
+    snapshots: {},
 
     initHolding: (id, initial) =>
       set((s) => {
@@ -132,7 +104,8 @@ export const useHoldingSnapshotStore = create<HoldingSnapshotStore>()(
 
     addLot: (id, holdingIndex) =>
       set((s) => {
-        s.snapshots[id].holdings[holdingIndex].lots.push(emptyLot());
+        const h = s.snapshots[id].holdings[holdingIndex];
+        h.lots.push({ ...emptyLot(), ticker: h.ticker });
       }),
 
     removeLot: (id, holdingIndex, lotIndex) =>

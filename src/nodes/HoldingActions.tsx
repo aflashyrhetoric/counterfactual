@@ -119,6 +119,27 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
 
   const selectedDate = data.date ? parseISO(data.date) : undefined;
 
+  if (data.locked) {
+    return (
+      <Card className="w-80 py-3 gap-3">
+        <Handle type="target" position={Position.Left} />
+
+        <CardHeader className="flex flex-col gap-1 px-3">
+          <span className="text-base font-medium">{data.label || 'Untitled actions'}</span>
+          <span className="text-xs text-muted-foreground">
+            {selectedDate ? format(selectedDate, 'PPP') : 'No date'}
+          </span>
+        </CardHeader>
+
+        <CardContent className="flex flex-col gap-3 px-3">
+          <ActionsDiffView data={data} />
+        </CardContent>
+
+        <Handle type="source" position={Position.Right} />
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-80 py-3 gap-3">
       <Handle type="target" position={Position.Left} />
@@ -128,7 +149,6 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="Untitled actions"
-          disabled={data.locked}
           className="nodrag h-7 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:bg-input/50 focus-visible:px-2.5"
         />
 
@@ -137,7 +157,7 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
           size="sm"
           className="nodrag w-fit"
           onClick={handleFetchPrices}
-          disabled={data.locked || fetchingPrices || !data.date || data.holdings.length === 0}
+          disabled={fetchingPrices || !data.date || data.holdings.length === 0}
         >
           <RefreshCw className={fetchingPrices ? 'animate-spin' : undefined} />
           {fetchingPrices ? 'Fetching…' : 'Fetch Prices'}
@@ -145,14 +165,7 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
 
         <Popover>
           <PopoverTrigger
-            render={
-              <Button
-                variant="outline"
-                size="sm"
-                className="nodrag w-fit justify-start font-normal"
-                disabled={data.locked}
-              />
-            }
+            render={<Button variant="outline" size="sm" className="nodrag w-fit justify-start font-normal" />}
           >
             <CalendarIcon className="opacity-60" />
             {selectedDate ? format(selectedDate, 'PPP') : <span>Pick a date</span>}
@@ -179,7 +192,6 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
               min="0"
               value={settlementFund}
               onChange={(e) => setSettlementFund(Math.round(Number(e.target.value) || 0))}
-              disabled={data.locked}
               className="nodrag pl-5"
             />
           </div>
@@ -190,25 +202,13 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Holdings</span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="nodrag"
-              onClick={handleAddHolding}
-              disabled={data.locked}
-            >
+            <Button variant="ghost" size="icon-sm" className="nodrag" onClick={handleAddHolding}>
               <Plus />
             </Button>
           </div>
 
           {data.holdings.map((holding, hIndex) => (
-            <ActionsHoldingCard
-              key={hIndex}
-              nodeId={id}
-              holdingIndex={hIndex}
-              holding={holding}
-              locked={data.locked}
-            />
+            <ActionsHoldingCard key={hIndex} nodeId={id} holdingIndex={hIndex} holding={holding} />
           ))}
         </div>
 
@@ -221,13 +221,74 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
 
         <Separator />
 
-        <Button className="nodrag" onClick={handleCreateSnapshot} disabled={data.locked}>
-          {data.locked ? 'Snapshot created' : 'Create New Snapshot'}
+        <Button className="nodrag" onClick={handleCreateSnapshot}>
+          Create New Snapshot
         </Button>
       </CardContent>
 
       <Handle type="source" position={Position.Right} />
     </Card>
+  );
+}
+
+function computeHoldingDiffs(
+  initial: { ticker: string; lots: { quantity: number }[] }[],
+  current: { ticker: string; lots: { quantity: number }[] }[]
+): { ticker: string; delta: number }[] {
+  const totals = new Map<string, { initial: number; current: number }>();
+
+  for (const h of initial) {
+    const t = totals.get(h.ticker) ?? { initial: 0, current: 0 };
+    t.initial += h.lots.reduce((sum, l) => sum + l.quantity, 0);
+    totals.set(h.ticker, t);
+  }
+  for (const h of current) {
+    const t = totals.get(h.ticker) ?? { initial: 0, current: 0 };
+    t.current += h.lots.reduce((sum, l) => sum + l.quantity, 0);
+    totals.set(h.ticker, t);
+  }
+
+  return [...totals.entries()]
+    .map(([ticker, { initial, current }]) => ({ ticker, delta: current - initial }))
+    .filter((d) => d.delta !== 0)
+    .sort((a, b) => a.ticker.localeCompare(b.ticker));
+}
+
+function ActionsDiffView({ data }: { data: ReturnType<typeof useHoldingActions> }) {
+  const diffs = computeHoldingDiffs(data.initialHoldings, data.holdings);
+  const fundDelta = data.settlement_fund - data.initialSettlementFund;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground">Trades made</span>
+        {diffs.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No share changes.</p>
+        ) : (
+          <div className="flex flex-col gap-1 rounded-2xl bg-muted/40 p-2.5">
+            {diffs.map((d) => (
+              <div key={d.ticker} className="flex items-center justify-between text-xs">
+                <span className="font-medium uppercase">{d.ticker}</span>
+                <span className={d.delta < 0 ? 'text-destructive' : undefined}>
+                  {d.delta > 0 ? `+${d.delta} bought` : `${Math.abs(d.delta)} sold`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Separator />
+
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium text-muted-foreground">Settlement fund</span>
+        <span className={fundDelta < 0 ? 'text-destructive' : undefined}>
+          ${data.initialSettlementFund.toFixed(2)} → ${data.settlement_fund.toFixed(2)} (
+          {fundDelta >= 0 ? '+' : ''}
+          {fundDelta.toFixed(2)})
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -254,12 +315,10 @@ function ActionsHoldingCard({
   nodeId,
   holdingIndex,
   holding,
-  locked,
 }: {
   nodeId: string;
   holdingIndex: number;
   holding: ActionsHolding;
-  locked: boolean;
 }) {
   const updateHoldingTicker = useHoldingActionsStore((s) => s.updateHoldingTicker);
   const removeStockHolding = useHoldingActionsStore((s) => s.removeStockHolding);
@@ -273,7 +332,7 @@ function ActionsHoldingCard({
       [nodeId, holdingIndex, updateHoldingTicker]
     )
   );
-  const canRemoveHolding = !locked && holding.lots.every((l) => l.quantity <= 0);
+  const canRemoveHolding = holding.lots.every((l) => l.quantity <= 0);
   const handleRemove = useCallback(
     () => removeStockHolding(nodeId, holdingIndex),
     [nodeId, holdingIndex, removeStockHolding]
@@ -281,7 +340,7 @@ function ActionsHoldingCard({
   const handleAddLot = useCallback(() => buyNewLot(nodeId, holdingIndex), [nodeId, holdingIndex, buyNewLot]);
 
   const price = data.marketOpenPrices?.[holding.ticker];
-  const canAddLot = !locked && price != null && data.settlement_fund >= price;
+  const canAddLot = price != null && data.settlement_fund >= price;
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl bg-muted/40 p-2.5">
@@ -290,7 +349,6 @@ function ActionsHoldingCard({
           value={ticker}
           onChange={(e) => setTicker(e.target.value.toUpperCase())}
           placeholder="Ticker"
-          disabled={locked}
           className="nodrag h-7 uppercase"
         />
         <Button
@@ -313,7 +371,6 @@ function ActionsHoldingCard({
             lotIndex={lIndex}
             lot={lot}
             canRemove={holding.lots.length > 1}
-            locked={locked}
           />
         ))}
         <Button
@@ -336,14 +393,12 @@ function ActionsLotRow({
   lotIndex,
   lot,
   canRemove,
-  locked,
 }: {
   nodeId: string;
   holdingIndex: number;
   lotIndex: number;
   lot: ActionsLot;
   canRemove: boolean;
-  locked: boolean;
 }) {
   const updateLot = useHoldingActionsStore((s) => s.updateLot);
   const removeLot = useHoldingActionsStore((s) => s.removeLot);
@@ -372,8 +427,8 @@ function ActionsLotRow({
   );
 
   const price = data.marketOpenPrices?.[lot.ticker];
-  const canSell = !locked && lot.quantity > 0 && price != null;
-  const canBuy = !locked && lot.quantity < lot.originalQuantity && price != null && data.settlement_fund >= price;
+  const canSell = lot.quantity > 0 && price != null;
+  const canBuy = lot.quantity < lot.originalQuantity && price != null && data.settlement_fund >= price;
 
   return (
     <div className="flex items-center gap-1.5">
@@ -420,7 +475,6 @@ function ActionsLotRow({
           value={purchasePrice}
           onChange={(e) => setPurchasePrice(Math.round(Number(e.target.value) || 0))}
           placeholder="Price"
-          disabled={locked}
           className="nodrag h-7 pl-4 text-xs"
         />
       </div>
@@ -429,7 +483,7 @@ function ActionsLotRow({
         size="icon-sm"
         className="nodrag text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
         onClick={handleRemove}
-        disabled={locked || !canRemove || lot.quantity > 0}
+        disabled={!canRemove || lot.quantity > 0}
       >
         <Trash2 className="size-3.5" />
       </Button>

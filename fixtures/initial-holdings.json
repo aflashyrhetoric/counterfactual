@@ -1,0 +1,472 @@
+[
+    {
+        "ticker": "AAPL",
+        "lots": [
+            {
+                "ticker": "AAPL",
+                "quantity": 10,
+                "purchasePrice": 107.18
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 7,
+                "purchasePrice": 112.73
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 5,
+                "purchasePrice": 127.76
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 2,
+                "purchasePrice": 129.93
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 4,
+                "purchasePrice": 120.58
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 1,
+                "purchasePrice": 124.97
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 10,
+                "purchasePrice": 124.22
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 1,
+                "purchasePrice": 145.08
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 10,
+                "purchasePrice": 145.6
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 5,
+                "purchasePrice": 142.71
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 5,
+                "purchasePrice": 139.83
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 5,
+                "purchasePrice": 145.24
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 20,
+                "purchasePrice": 146.24
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 100,
+                "purchasePrice": 139.67
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 100,
+                "purchasePrice": 137.87
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 1,
+                "purchasePrice": 132.74
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 20,
+                "purchasePrice": 134.21
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 2,
+                "purchasePrice": 130.05
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 10,
+                "purchasePrice": 130.52
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 2,
+                "purchasePrice": 138.33
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 1,
+                "purchasePrice": 146.02
+            },
+            {
+                "ticker": "AAPL",
+                "quantity": 5,
+                "purchasePrice": 139
+            }
+        ]
+    },
+    {
+        "ticker": "AMZN",
+        "lots": [
+            {
+                "ticker": "AMZN",
+                "quantity": 5,
+                "purchasePrice": 113
+            },
+            {
+                "ticker": "AMZN",
+                "quantity": 10,
+                "purchasePrice": 96
+            }
+        ]
+    },
+    {
+        "ticker": "AXON",
+        "lots": [
+            {
+                "ticker": "AXON",
+                "quantity": 14,
+                "purchasePrice": 684.15
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 10,
+                "purchasePrice": 748.53
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 10,
+                "purchasePrice": 745.17
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 5,
+                "purchasePrice": 399.27
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 10,
+                "purchasePrice": 417.69
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 2,
+                "purchasePrice": 438.42
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 2,
+                "purchasePrice": 628.02
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 17,
+                "purchasePrice": 533.93
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 10,
+                "purchasePrice": 573.715
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 20,
+                "purchasePrice": 557.84
+            },
+            {
+                "ticker": "AXON",
+                "quantity": 1,
+                "purchasePrice": 518.47
+            }
+        ]
+    },
+    {
+        "ticker": "COST",
+        "lots": [
+            {
+                "ticker": "COST",
+                "quantity": 1,
+                "purchasePrice": 881.29
+            },
+            {
+                "ticker": "COST",
+                "quantity": 1,
+                "purchasePrice": 896.42
+            }
+        ]
+    },
+    {
+        "ticker": "CRCL",
+        "lots": [
+            {
+                "ticker": "CRCL",
+                "quantity": 50,
+                "purchasePrice": 223.44
+            },
+            {
+                "ticker": "CRCL",
+                "quantity": 20,
+                "purchasePrice": 79.8
+            }
+        ]
+    },
+    {
+        "ticker": "GOOG",
+        "lots": [
+            {
+                "ticker": "GOOG",
+                "quantity": 10,
+                "purchasePrice": 111.27
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 20,
+                "purchasePrice": 109.13
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 20,
+                "purchasePrice": 108.75
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 20,
+                "purchasePrice": 106.75
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 20,
+                "purchasePrice": 106.17
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 20,
+                "purchasePrice": 120.61
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 50,
+                "purchasePrice": 111.69
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 25,
+                "purchasePrice": 109.41
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 5,
+                "purchasePrice": 106.45
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 50,
+                "purchasePrice": 99.46
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 20,
+                "purchasePrice": 89.25
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 10,
+                "purchasePrice": 89.64
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 6,
+                "purchasePrice": 97.42
+            },
+            {
+                "ticker": "GOOG",
+                "quantity": 6,
+                "purchasePrice": 88.1
+            }
+        ]
+    },
+    {
+        "ticker": "LLY",
+        "lots": [
+            {
+                "ticker": "LLY",
+                "quantity": 3,
+                "purchasePrice": 365.26
+            },
+            {
+                "ticker": "LLY",
+                "quantity": 2,
+                "purchasePrice": 330.13
+            },
+            {
+                "ticker": "LLY",
+                "quantity": 5,
+                "purchasePrice": 1027.67
+            },
+            {
+                "ticker": "LLY",
+                "quantity": 2,
+                "purchasePrice": 987.84
+            }
+        ]
+    },
+    {
+        "ticker": "META",
+        "lots": [
+            {
+                "ticker": "META",
+                "quantity": 10,
+                "purchasePrice": 154.9
+            }
+        ]
+    },
+    {
+        "ticker": "MOG.A",
+        "lots": [
+            {
+                "ticker": "MOG.A",
+                "quantity": 10,
+                "purchasePrice": 313.56
+            },
+            {
+                "ticker": "MOG.A",
+                "quantity": 10,
+                "purchasePrice": 301.25
+            }
+        ]
+    },
+    {
+        "ticker": "MSFT",
+        "lots": [
+            {
+                "ticker": "MSFT",
+                "quantity": 2,
+                "purchasePrice": 230.19
+            },
+            {
+                "ticker": "MSFT",
+                "quantity": 2,
+                "purchasePrice": 233.65
+            },
+            {
+                "ticker": "MSFT",
+                "quantity": 5,
+                "purchasePrice": 269.29
+            },
+            {
+                "ticker": "MSFT",
+                "quantity": 2,
+                "purchasePrice": 259.76
+            },
+            {
+                "ticker": "MSFT",
+                "quantity": 5,
+                "purchasePrice": 254.64
+            },
+            {
+                "ticker": "MSFT",
+                "quantity": 30,
+                "purchasePrice": 262.99
+            },
+            {
+                "ticker": "MSFT",
+                "quantity": 10,
+                "purchasePrice": 257
+            }
+        ]
+    },
+    {
+        "ticker": "NVDA",
+        "lots": [
+            {
+                "ticker": "NVDA",
+                "quantity": 100,
+                "purchasePrice": 172.67
+            },
+            {
+                "ticker": "NVDA",
+                "quantity": 10,
+                "purchasePrice": 194.09
+            },
+            {
+                "ticker": "NVDA",
+                "quantity": 10,
+                "purchasePrice": 177.44
+            }
+        ]
+    },
+    {
+        "ticker": "PLTR",
+        "lots": [
+            {
+                "ticker": "PLTR",
+                "quantity": 50,
+                "purchasePrice": 91.49
+            },
+            {
+                "ticker": "PLTR",
+                "quantity": 50,
+                "purchasePrice": 132.13
+            },
+            {
+                "ticker": "PLTR",
+                "quantity": 100,
+                "purchasePrice": 129.23
+            },
+            {
+                "ticker": "PLTR",
+                "quantity": 50,
+                "purchasePrice": 138.84
+            }
+        ]
+    },
+    {
+        "ticker": "TSLA",
+        "lots": [
+            {
+                "ticker": "TSLA",
+                "quantity": 10,
+                "purchasePrice": 283
+            },
+            {
+                "ticker": "TSLA",
+                "quantity": 10,
+                "purchasePrice": 278
+            },
+            {
+                "ticker": "TSLA",
+                "quantity": 10,
+                "purchasePrice": 275
+            },
+            {
+                "ticker": "TSLA",
+                "quantity": 25,
+                "purchasePrice": 229.11
+            },
+            {
+                "ticker": "TSLA",
+                "quantity": 20,
+                "purchasePrice": 188.39
+            },
+            {
+                "ticker": "TSLA",
+                "quantity": 10,
+                "purchasePrice": 178.84
+            },
+            {
+                "ticker": "TSLA",
+                "quantity": 20,
+                "purchasePrice": 168.41
+            }
+        ]
+    }
+]
