@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useDebounce } from '@uidotdev/usehooks';
 import { format, parseISO } from 'date-fns';
-import { CalendarIcon, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { CalendarIcon, ChevronDown, ChevronRight, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { type HoldingSnapshotNode, type Lot, type StockHolding } from './types';
@@ -201,6 +201,7 @@ function HoldingCard({
   const updateHoldingTicker = useHoldingSnapshotStore((s) => s.updateHoldingTicker);
   const removeStockHolding = useHoldingSnapshotStore((s) => s.removeStockHolding);
   const addLot = useHoldingSnapshotStore((s) => s.addLot);
+  const [expanded, setExpanded] = useState(false);
 
   const [ticker, setTicker] = useDebouncedField(
     holding.ticker,
@@ -218,6 +219,14 @@ function HoldingCard({
   return (
     <div className="flex flex-col gap-2 rounded-2xl bg-muted/40 p-2.5">
       <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="nodrag shrink-0 text-muted-foreground"
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? <ChevronDown /> : <ChevronRight />}
+        </Button>
         <Input
           value={ticker}
           onChange={(e) => setTicker(e.target.value.toUpperCase())}
@@ -234,26 +243,28 @@ function HoldingCard({
         </Button>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        {holding.lots.map((lot, lIndex) => (
-          <LotRow
-            key={lIndex}
-            nodeId={nodeId}
-            holdingIndex={holdingIndex}
-            lotIndex={lIndex}
-            lot={lot}
-            canRemove={holding.lots.length > 1}
-          />
-        ))}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="nodrag self-start text-xs text-muted-foreground"
-          onClick={handleAddLot}
-        >
-          <Plus className="size-3.5" /> Add lot
-        </Button>
-      </div>
+      {expanded && (
+        <div className="flex flex-col gap-1.5">
+          {holding.lots.map((lot, lIndex) => (
+            <LotRow
+              key={lIndex}
+              nodeId={nodeId}
+              holdingIndex={holdingIndex}
+              lotIndex={lIndex}
+              lot={lot}
+              canRemove={holding.lots.length > 1}
+            />
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="nodrag self-start text-xs text-muted-foreground"
+            onClick={handleAddLot}
+          >
+            <Plus className="size-3.5" /> Add lot
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
