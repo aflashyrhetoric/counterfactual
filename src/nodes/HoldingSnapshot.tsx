@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useDebounce } from '@uidotdev/usehooks';
 import { format, parseISO } from 'date-fns';
@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { type HoldingSnapshotNode, type Lot, type StockHolding } from './types';
 import { useHoldingSnapshot, useHoldingSnapshotStore } from '@/store/holdingSnapshots';
 import { fetchMarketOpenPrices } from '@/lib/massive';
+import { valueOfSnapshot } from '@/lib/valuation';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,7 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
   const addHolding = useHoldingSnapshotStore((s) => s.addHolding);
   const setMarketOpenPrices = useHoldingSnapshotStore((s) => s.setMarketOpenPrices);
   const [fetchingPrices, setFetchingPrices] = useState(false);
+  const [holdingsExpanded, setHoldingsExpanded] = useState(false);
 
   const [label, setLabel] = useDebouncedField(
     data.label,
@@ -81,9 +83,10 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
   }, [id, data.holdings, data.date, setMarketOpenPrices]);
 
   const selectedDate = data.date ? parseISO(data.date) : undefined;
+  const totalValue = useMemo(() => valueOfSnapshot(data), [data]);
 
   return (
-    <Card className="w-80 py-3 gap-3">
+    <Card className="w-80 bg-blue-50 py-3 gap-3">
       <Handle type="target" position={Position.Left} className={`!size-4`} />
 
       <CardHeader className="flex flex-col gap-2 px-3">
@@ -104,6 +107,11 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
           >
             <RefreshCw className={fetchingPrices ? 'animate-spin' : undefined} />
           </Button>
+        </div>
+
+        <div className="flex items-center justify-between">
+          {/* <span className="text-xs font-medium text-muted-foreground mr-2">Total value</span> */}
+          <span className="text-sm font-semibold">{totalValue != null ? `$${totalValue.toFixed(2)}` : '—'}</span>
         </div>
 
         <Popover>
@@ -144,17 +152,26 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
 
         <Separator />
 
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Holdings</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="nodrag -ml-2 h-7 gap-1 px-2 text-xs font-medium text-muted-foreground"
+              onClick={() => setHoldingsExpanded((e) => !e)}
+            >
+              {holdingsExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+              Holdings
+            </Button>
             <Button variant="ghost" size="icon-sm" className="nodrag" onClick={handleAddHolding}>
               <Plus />
             </Button>
           </div>
 
-          {data.holdings.map((holding, hIndex) => (
-            <HoldingCard key={hIndex} nodeId={id} holdingIndex={hIndex} holding={holding} />
-          ))}
+          {holdingsExpanded &&
+            data.holdings.map((holding, hIndex) => (
+              <HoldingCard key={hIndex} nodeId={id} holdingIndex={hIndex} holding={holding} />
+            ))}
         </div>
 
         {data.marketOpenPrices && (
@@ -181,6 +198,9 @@ function MarketOpenPrices({ prices }: { prices: Record<string, number> }) {
         {entries.map(([ticker, price]) => (
           <div key={ticker} className="flex items-center justify-between text-xs">
             <span className="font-medium uppercase">{ticker}</span>
+            <div className="flex w-full h-full px-3 h-auto">
+              <div className="border-b h-[1px] border-neutral-200 flex-grow"></div>
+            </div>
             <span className="text-muted-foreground">${price.toFixed(2)}</span>
           </div>
         ))}
@@ -217,7 +237,7 @@ function HoldingCard({
   const handleAddLot = useCallback(() => addLot(nodeId, holdingIndex), [nodeId, holdingIndex, addLot]);
 
   return (
-    <div className="flex flex-col gap-2 rounded-2xl bg-muted/40 p-2.5">
+    <div className="flex flex-col gap-2 rounded bg-muted/30 p-2">
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"

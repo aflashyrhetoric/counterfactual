@@ -20,12 +20,13 @@ import '@xyflow/react/dist/style.css';
 import { initialNodes, nodeTypes } from './nodes';
 import { initialEdges, edgeTypes } from './edges';
 import { Button } from './components/ui/button';
-import type { AppNode, HoldingSnapshotNode } from './nodes/types';
+import type { AppNode, AnalysisNode, HoldingSnapshotNode } from './nodes/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { findOpenSpot, getNodeId } from './lib/flow';
 import { useHoldingSnapshotStore } from './store/holdingSnapshots';
 import { useHoldingActionsStore } from './store/holdingActions';
+import { useAnalysisStore } from './store/analysisNodes';
 import { loadCanvasState, saveCanvasState } from './lib/persistence';
 
 function Flow() {
@@ -41,15 +42,19 @@ function Flow() {
   const initActions = useHoldingActionsStore((s) => s.initActions);
   const removeActions = useHoldingActionsStore((s) => s.removeActions);
   const loadActions = useHoldingActionsStore((s) => s.loadActions);
+  const initAnalysis = useAnalysisStore((s) => s.initAnalysis);
+  const removeAnalysis = useAnalysisStore((s) => s.removeAnalysis);
+  const loadAnalyses = useAnalysisStore((s) => s.loadAnalyses);
 
   const onNodesDelete = useCallback(
     (deleted: AppNode[]) => {
       for (const node of deleted) {
         if (node.type === 'holding-snapshot') removeHolding(node.id);
         else if (node.type === 'holding-actions') removeActions(node.id);
+        else if (node.type === 'analysis-node') removeAnalysis(node.id);
       }
     },
-    [removeHolding, removeActions]
+    [removeHolding, removeActions, removeAnalysis]
   );
 
   useEffect(() => {
@@ -62,6 +67,7 @@ function Flow() {
         setEdges(state.edges);
         loadSnapshots(state.snapshots);
         loadActions(state.actions);
+        loadAnalyses(state.analyses);
         requestAnimationFrame(() => fitView({ maxZoom: 1 }));
       })
       .catch((e) => toast.error(e instanceof Error ? e.message : 'Failed to load saved canvas.'));
@@ -80,6 +86,7 @@ function Flow() {
         edges,
         snapshots: useHoldingSnapshotStore.getState().snapshots,
         actions: useHoldingActionsStore.getState().actions,
+        analyses: useAnalysisStore.getState().analyses,
       });
       toast.success('Canvas saved.');
     } catch (e) {
@@ -95,6 +102,7 @@ function Flow() {
       edges,
       snapshots: useHoldingSnapshotStore.getState().snapshots,
       actions: useHoldingActionsStore.getState().actions,
+      analyses: useAnalysisStore.getState().analyses,
     });
   }, [nodes, edges]);
 
@@ -157,6 +165,27 @@ function Flow() {
     toast.success("Holding node added.");
   }
 
+  function addAnalysisNode() {
+    const center = screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    });
+    const position = findOpenSpot(getIntersectingNodes, center);
+    const id = getNodeId();
+
+    initAnalysis(id, { label: 'Analysis' });
+
+    const newNode: AnalysisNode = {
+      id,
+      type: 'analysis-node',
+      position,
+      data: {},
+    };
+
+    setNodes((nodes) => nodes.concat(newNode));
+    toast.success('Analysis node added.');
+  }
+
   // const [addActionModalOpen]
 
   return (
@@ -178,7 +207,10 @@ function Flow() {
     >
       <Panel position="top-left" className="flex gap-2">
         <Button onClick={addHoldingSnapshotNode}>
-          Add Holding
+          Add Holding Snapshot
+        </Button>
+        <Button onClick={addAnalysisNode}>
+          Add Analysis Node
         </Button>
         <Button variant="outline" onClick={handleSave} disabled={saving}>
           <Save className={saving ? 'animate-pulse' : undefined} />

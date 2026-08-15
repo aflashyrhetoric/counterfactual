@@ -121,11 +121,17 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
 
   if (data.locked) {
     return (
-      <Card className="w-80 py-3 gap-3">
+      <Card className="w-80 bg-pink-50 py-3 gap-3">
         <Handle type="target" position={Position.Left} />
 
         <CardHeader className="flex flex-col gap-1 px-3">
-          <span className="text-base font-medium">{data.label || 'Untitled actions'}</span>
+          {/* <span className="text-base font-medium">{data.label || 'Untitled actions'}</span> */}
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Untitled actions"
+            className="nodrag h-7 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:bg-input/50 focus-visible:px-2.5"
+          />
           <span className="text-xs text-muted-foreground">
             {selectedDate ? format(selectedDate, 'PPP') : 'No date'}
           </span>
@@ -323,6 +329,7 @@ function ActionsHoldingCard({
   const updateHoldingTicker = useHoldingActionsStore((s) => s.updateHoldingTicker);
   const removeStockHolding = useHoldingActionsStore((s) => s.removeStockHolding);
   const buyNewLot = useHoldingActionsStore((s) => s.buyNewLot);
+  const sellAllLots = useHoldingActionsStore((s) => s.sellAllLots);
   const data = useHoldingActions(nodeId);
 
   const [ticker, setTicker] = useDebouncedField(
@@ -338,13 +345,28 @@ function ActionsHoldingCard({
     [nodeId, holdingIndex, removeStockHolding]
   );
   const handleAddLot = useCallback(() => buyNewLot(nodeId, holdingIndex), [nodeId, holdingIndex, buyNewLot]);
+  const handleSellAllLots = useCallback(
+    () => sellAllLots(nodeId, holdingIndex),
+    [nodeId, holdingIndex, sellAllLots]
+  );
 
   const price = data.marketOpenPrices?.[holding.ticker];
   const canAddLot = price != null && data.settlement_fund >= price;
+  const canSellAllLots = price != null && holding.lots.some((l) => l.quantity > 0);
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl bg-muted/40 p-2.5">
       <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="nodrag text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+          onClick={handleSellAllLots}
+          title="Sell all lots in this holding"
+          disabled={!canSellAllLots}
+        >
+          <Minus className="size-3.5" />
+        </Button>
         <Input
           value={ticker}
           onChange={(e) => setTicker(e.target.value.toUpperCase())}
@@ -364,14 +386,7 @@ function ActionsHoldingCard({
 
       <div className="flex flex-col gap-1.5">
         {holding.lots.map((lot, lIndex) => (
-          <ActionsLotRow
-            key={lIndex}
-            nodeId={nodeId}
-            holdingIndex={holdingIndex}
-            lotIndex={lIndex}
-            lot={lot}
-            canRemove={holding.lots.length > 1}
-          />
+          <ActionsLotRow key={lIndex} nodeId={nodeId} holdingIndex={holdingIndex} lotIndex={lIndex} lot={lot} />
         ))}
         <Button
           variant="ghost"
@@ -392,18 +407,16 @@ function ActionsLotRow({
   holdingIndex,
   lotIndex,
   lot,
-  canRemove,
 }: {
   nodeId: string;
   holdingIndex: number;
   lotIndex: number;
   lot: ActionsLot;
-  canRemove: boolean;
 }) {
   const updateLot = useHoldingActionsStore((s) => s.updateLot);
-  const removeLot = useHoldingActionsStore((s) => s.removeLot);
   const buyOneShare = useHoldingActionsStore((s) => s.buyOneShare);
   const sellOneShare = useHoldingActionsStore((s) => s.sellOneShare);
+  const sellAllShares = useHoldingActionsStore((s) => s.sellAllShares);
   const data = useHoldingActions(nodeId);
 
   const [purchasePrice, setPurchasePrice] = useDebouncedField(
@@ -413,10 +426,6 @@ function ActionsLotRow({
       [nodeId, holdingIndex, lotIndex, updateLot]
     )
   );
-  const handleRemove = useCallback(
-    () => removeLot(nodeId, holdingIndex, lotIndex),
-    [nodeId, holdingIndex, lotIndex, removeLot]
-  );
   const handleBuy = useCallback(
     () => buyOneShare(nodeId, holdingIndex, lotIndex),
     [nodeId, holdingIndex, lotIndex, buyOneShare]
@@ -424,6 +433,10 @@ function ActionsLotRow({
   const handleSell = useCallback(
     () => sellOneShare(nodeId, holdingIndex, lotIndex),
     [nodeId, holdingIndex, lotIndex, sellOneShare]
+  );
+  const handleSellAll = useCallback(
+    () => sellAllShares(nodeId, holdingIndex, lotIndex),
+    [nodeId, holdingIndex, lotIndex, sellAllShares]
   );
 
   const price = data.marketOpenPrices?.[lot.ticker];
@@ -480,12 +493,13 @@ function ActionsLotRow({
       </div>
       <Button
         variant="ghost"
-        size="icon-sm"
-        className="nodrag text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
-        onClick={handleRemove}
-        disabled={!canRemove || lot.quantity > 0}
+        size="sm"
+        className="nodrag h-7 px-2 text-xs text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+        onClick={handleSellAll}
+        title="Sell all shares in this lot"
+        disabled={!canSell}
       >
-        <Trash2 className="size-3.5" />
+        Sell All
       </Button>
     </div>
   );

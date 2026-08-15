@@ -63,7 +63,6 @@ type HoldingActionsStore = {
   removeStockHolding: (id: string, holdingIndex: number) => void;
   updateHoldingTicker: (id: string, holdingIndex: number, ticker: string) => void;
 
-  removeLot: (id: string, holdingIndex: number, lotIndex: number) => void;
   updateLot: (id: string, holdingIndex: number, lotIndex: number, partial: Partial<Lot>) => void;
 
   // Buys a brand-new lot for this holding at today's known price (the only
@@ -74,6 +73,11 @@ type HoldingActionsStore = {
   buyOneShare: (id: string, holdingIndex: number, lotIndex: number) => void;
   // Minus: sells one share from this specific lot, down to 0.
   sellOneShare: (id: string, holdingIndex: number, lotIndex: number) => void;
+  // Sell All: sells every remaining share in this specific lot at once.
+  sellAllShares: (id: string, holdingIndex: number, lotIndex: number) => void;
+  // Sell All (holding-level): sells every lot in this holding at once —
+  // equivalent to calling sellAllShares on each of its lots.
+  sellAllLots: (id: string, holdingIndex: number) => void;
 };
 
 export const useHoldingActionsStore = create<HoldingActionsStore>()(
@@ -164,15 +168,6 @@ export const useHoldingActionsStore = create<HoldingActionsStore>()(
         });
       }),
 
-    removeLot: (id, holdingIndex, lotIndex) =>
-      set((s) => {
-        if (s.actions[id].locked) return;
-        const h = s.actions[id].holdings[holdingIndex];
-        const lot = h.lots[lotIndex];
-        if (h.lots.length <= 1 || lot.quantity > 0) return; // would destroy a cash-backed position
-        h.lots.splice(lotIndex, 1);
-      }),
-
     updateLot: (id, holdingIndex, lotIndex, partial) =>
       set((s) => {
         if (s.actions[id].locked) return;
@@ -217,6 +212,32 @@ export const useHoldingActionsStore = create<HoldingActionsStore>()(
         if (lot.quantity <= 0 || price == null) return;
         lot.quantity -= 1;
         entry.settlement_fund += price;
+      }),
+
+    sellAllShares: (id, holdingIndex, lotIndex) =>
+      set((s) => {
+        const entry = s.actions[id];
+        if (entry.locked) return;
+        const holding = entry.holdings[holdingIndex];
+        const lot = holding.lots[lotIndex];
+        const price = entry.marketOpenPrices?.[holding.ticker];
+        if (lot.quantity <= 0 || price == null) return;
+        entry.settlement_fund += lot.quantity * price;
+        lot.quantity = 0;
+      }),
+
+    sellAllLots: (id, holdingIndex) =>
+      set((s) => {
+        const entry = s.actions[id];
+        if (entry.locked) return;
+        const holding = entry.holdings[holdingIndex];
+        const price = entry.marketOpenPrices?.[holding.ticker];
+        if (price == null) return;
+        for (const lot of holding.lots) {
+          if (lot.quantity <= 0) continue;
+          entry.settlement_fund += lot.quantity * price;
+          lot.quantity = 0;
+        }
       }),
   }))
 );

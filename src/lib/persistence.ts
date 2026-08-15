@@ -1,6 +1,6 @@
 import type { Edge } from '@xyflow/react';
 
-import type { AppNode, HoldingSnapshotNodeData } from '@/nodes/types';
+import type { AppNode, AnalysisNodeData, HoldingSnapshotNodeData } from '@/nodes/types';
 import type { HoldingActionsNodeData } from '@/store/holdingActions';
 import { supabase } from './supabase';
 
@@ -11,6 +11,7 @@ export type CanvasState = {
   edges: Edge[];
   snapshots: Record<string, HoldingSnapshotNodeData>;
   actions: Record<string, HoldingActionsNodeData>;
+  analyses: Record<string, AnalysisNodeData>;
 };
 
 export async function saveCanvasState(state: CanvasState): Promise<void> {
@@ -36,6 +37,6 @@ export async function loadCanvasState(): Promise<CanvasState | null> {
   if (!data?.state) return null;
 
   const state = data.state as CanvasState;
-  // Older saved rows predate the `actions` field.
-  return { ...state, actions: state.actions ?? {} };
+  // Older saved rows predate the `actions` and `analyses` fields.
+  return { ...state, actions: state.actions ?? {}, analyses: state.analyses ?? {} };
 }
