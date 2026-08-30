@@ -3,14 +3,17 @@ import { Handle, Position, useEdges, useNodes, type Edge, type NodeProps } from 
 import { useDebounce } from '@uidotdev/usehooks';
 import { format, parseISO } from 'date-fns';
 import { Area, AreaChart, XAxis, YAxis } from 'recharts';
+import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { type AnalysisNode as AnalysisNodeType, type AppNode, type StockTicker } from './types';
 import { useAnalysis, useAnalysisStore } from '@/store/analysisNodes';
 import { useHoldingSnapshotStore } from '@/store/holdingSnapshots';
-import { fetchMarketOpenPrices } from '@/lib/massive';
+import { useHoldingActionsStore } from '@/store/holdingActions';
+import { fetchLiveStockPrices } from '@/lib/massive';
 import { valueOfSnapshot } from '@/lib/valuation';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
@@ -77,6 +80,20 @@ function collectAncestorSnapshotIds(
   return snapshotIds;
 }
 
+// Adds each holding's total shares into `totals`, keyed by ticker — shared
+// between HoldingSnapshot and HoldingActions holdings, which differ only in
+// extra per-lot bookkeeping fields that don't matter for a share count.
+function addSharesToTotals(
+  holdings: { ticker: string; lots: { quantity: number }[] }[],
+  totals: Map<string, number>
+) {
+  for (const holding of holdings) {
+    if (!holding.ticker) continue;
+    const shares = holding.lots.reduce((sum, l) => sum + l.quantity, 0);
+    totals.set(holding.ticker, (totals.get(holding.ticker) ?? 0) + shares);
+  }
+}
+
 // Percent change per ticker from the earliest ancestor snapshot that had a
 // recorded price for it, to today's live price — the basis for the
 // up/down indicator in the holdings list.
@@ -110,6 +127,7 @@ export function AnalysisNode({ id }: NodeProps<AnalysisNodeType>) {
   const setComparisonDates = useAnalysisStore((s) => s.setComparisonDates);
   const setMarketPrices = useAnalysisStore((s) => s.setMarketPrices);
   const snapshots = useHoldingSnapshotStore((s) => s.snapshots);
+  const actions = useHoldingActionsStore((s) => s.actions);
   const allNodes = useNodes<AppNode>();
   const allEdges = useEdges();
   const [fetchingPrices, setFetchingPrices] = useState(false);
@@ -125,8 +143,11 @@ export function AnalysisNode({ id }: NodeProps<AnalysisNodeType>) {
     return m;
   }, [allNodes]);
 
-  // Holdings/value come from whatever snapshot(s) are directly attached —
-  // each snapshot already carries the full current position, not a delta.
+  // Holdings/value come from whatever snapshot(s) and/or actions node(s)
+  // are directly attached — each already carries the full current
+  // position, not a delta. A HoldingActions parent's holdings/settlement
+  // fund live in its own store, which re-renders this node automatically
+  // whenever they change (e.g. a buy/sell), so this stays live in real time.
   const connectedSnapshots = useMemo(() => {
     const ids = new Set<string>();
     for (const e of allEdges) {
@@ -135,6 +156,15 @@ export function AnalysisNode({ id }: NodeProps<AnalysisNodeType>) {
     }
     return [...ids].map((sid) => snapshots[sid]).filter(Boolean);
   }, [allEdges, id, nodeTypeById, snapshots]);
+
+  const connectedActions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of allEdges) {
+      if (e.source === id && nodeTypeById.get(e.target) === 'holding-actions') ids.add(e.target);
+      else if (e.target === id && nodeTypeById.get(e.source) === 'holding-actions') ids.add(e.source);
+    }
+    return [...ids].map((sid) => actions[sid]).filter(Boolean);
+  }, [allEdges, id, nodeTypeById, actions]);
 
   // The "from" date, though, walks all the way back through the chain —
   // not just the directly attached snapshot(s).
@@ -162,53 +192,50 @@ export function AnalysisNode({ id }: NodeProps<AnalysisNodeType>) {
   }, [id, earliestDate, today]);
 
   // Total shares held per ticker, summed across every lot in every
-  // connected snapshot.
+  // connected snapshot and/or actions node.
   const sharesByTicker = useMemo(() => {
     const totals = new Map<StockTicker, number>();
-    for (const snap of connectedSnapshots) {
-      for (const holding of snap.holdings) {
-        if (!holding.ticker) continue;
-        const shares = holding.lots.reduce((sum, l) => sum + l.quantity, 0);
-        totals.set(holding.ticker, (totals.get(holding.ticker) ?? 0) + shares);
-      }
-    }
+    for (const snap of connectedSnapshots) addSharesToTotals(snap.holdings, totals);
+    for (const act of connectedActions) addSharesToTotals(act.holdings, totals);
     return totals;
-  }, [connectedSnapshots]);
+  }, [connectedSnapshots, connectedActions]);
 
   const tickers = useMemo(() => [...sharesByTicker.keys()].sort(), [sharesByTicker]);
   const totalSettlementFund = useMemo(
-    () => connectedSnapshots.reduce((sum, s) => sum + s.settlement_fund, 0),
-    [connectedSnapshots]
+    () =>
+      connectedSnapshots.reduce((sum, s) => sum + s.settlement_fund, 0) +
+      connectedActions.reduce((sum, a) => sum + a.settlement_fund, 0),
+    [connectedSnapshots, connectedActions]
   );
 
-  // Auto-fetch today's prices whenever the set of held tickers changes.
+  // Live (last-trade) prices, not the market-open print — open is a single
+  // fixed value for the whole day, so it never moves no matter how often
+  // it's refetched. Exposed as a callback so both the auto-fetch below and
+  // the manual refresh button can trigger the same fetch.
+  const fetchLivePrices = useCallback(async () => {
+    if (tickers.length === 0) return;
+    setFetchingPrices(true);
+    try {
+      const results = await fetchLiveStockPrices(tickers);
+      const prices: Record<string, number> = {};
+      const failed: string[] = [];
+      for (const r of results) {
+        if (typeof r.price === 'number') prices[r.ticker] = r.price;
+        else failed.push(r.ticker);
+      }
+      if (Object.keys(prices).length > 0) setMarketPrices(id, prices);
+      if (failed.length > 0) toast.error(`Couldn't fetch prices for ${failed.join(', ')}`);
+    } finally {
+      setFetchingPrices(false);
+    }
+  }, [id, tickers, setMarketPrices]);
+
+  // Auto-fetch whenever the set of held tickers changes.
   const tickerKey = tickers.join(',');
   useEffect(() => {
-    if (tickers.length === 0) return;
-    let cancelled = false;
-
-    setFetchingPrices(true);
-    fetchMarketOpenPrices(tickers, today)
-      .then((results) => {
-        if (cancelled) return;
-        const prices: Record<string, number> = {};
-        const failed: string[] = [];
-        for (const r of results) {
-          if (typeof r.open === 'number') prices[r.ticker] = r.open;
-          else failed.push(r.ticker);
-        }
-        if (Object.keys(prices).length > 0) setMarketPrices(id, prices);
-        if (failed.length > 0) toast.error(`Couldn't fetch prices for ${failed.join(', ')}`);
-      })
-      .finally(() => {
-        if (!cancelled) setFetchingPrices(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    fetchLivePrices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, tickerKey, today, setMarketPrices]);
+  }, [tickerKey]);
 
   const holdingsValue = tickers.reduce((sum, ticker) => {
     const price = data.marketPrices?.[ticker];
@@ -230,15 +257,23 @@ export function AnalysisNode({ id }: NodeProps<AnalysisNodeType>) {
     for (const sid of ancestorSnapshotIds) {
       const snap = snapshots[sid];
       if (!snap?.date) continue;
-      const value = valueOfSnapshot(snap);
+      const value = valueOfSnapshot(snap, snap.marketOpenPrices);
       if (value != null) points.push({ date: snap.date, value });
     }
     points.sort((a, b) => a.date.localeCompare(b.date));
-    if (allPricesKnown && connectedSnapshots.length > 0) {
+    if (allPricesKnown && (connectedSnapshots.length > 0 || connectedActions.length > 0)) {
       points.push({ date: today, value: totalValue });
     }
     return points;
-  }, [ancestorSnapshotIds, snapshots, allPricesKnown, connectedSnapshots.length, totalValue, today]);
+  }, [
+    ancestorSnapshotIds,
+    snapshots,
+    allPricesKnown,
+    connectedSnapshots.length,
+    connectedActions.length,
+    totalValue,
+    today,
+  ]);
 
   const yDomain = useMemo((): [number, number] | undefined => {
     if (chartData.length === 0) return undefined;
@@ -251,12 +286,24 @@ export function AnalysisNode({ id }: NodeProps<AnalysisNodeType>) {
       <Handle type="target" position={Position.Left} />
 
       <CardHeader className="flex flex-col gap-2 px-3">
-        <Input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="Untitled analysis"
-          className="nodrag h-7 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:bg-input/50 focus-visible:px-2.5"
-        />
+        <div className="flex items-center justify-between gap-2">
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Untitled analysis"
+            className="nodrag h-7 border-0 bg-transparent px-0 text-base font-medium shadow-none focus-visible:bg-input/50 focus-visible:px-2.5"
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="nodrag shrink-0 text-muted-foreground"
+            title="Refresh live prices"
+            onClick={fetchLivePrices}
+            disabled={fetchingPrices || tickers.length === 0}
+          >
+            <RefreshCw className={fetchingPrices ? 'animate-spin' : undefined} />
+          </Button>
+        </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{data.comparison_from_date || '—'}</span>
           <span>→</span>
@@ -265,8 +312,8 @@ export function AnalysisNode({ id }: NodeProps<AnalysisNodeType>) {
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3 px-3">
-        {connectedSnapshots.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Connect a holding snapshot to analyze it.</p>
+        {connectedSnapshots.length === 0 && connectedActions.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Connect a holding snapshot or actions node to analyze it.</p>
         ) : (
           <>
             <div className="flex flex-col gap-1.5">

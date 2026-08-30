@@ -39,3 +39,36 @@ export async function fetchMarketOpenPrices(
     })
   );
 }
+
+export type LiveStockPriceResult =
+  | { ticker: string; price: number; error?: undefined }
+  | { ticker: string; price?: undefined; error: string };
+
+// Fetches the most recent trade price for each ticker, right now — falls
+// back to the latest minute/day/prev-day close if no trade is available
+// (e.g. market closed). One request covers every ticker.
+export async function fetchLiveStockPrices(tickers: string[]): Promise<LiveStockPriceResult[]> {
+  if (!massive) {
+    return tickers.map((ticker) => ({ ticker, error: 'Missing VITE_MASSIVE_API_KEY' }));
+  }
+  if (tickers.length === 0) return [];
+
+  try {
+    // The client's array serializer repeats `tickers=A&tickers=B&...`, but
+    // this endpoint actually wants one comma-joined value (per its own doc
+    // comment) — repeated params silently return only the first ticker
+    // with a 200 OK, no error, so this isn't optional.
+    const resp = await massive.getStocksSnapshotTickers({ tickers: [tickers.join(',')] });
+    const byTicker = new Map((resp.tickers ?? []).map((t) => [t.ticker, t]));
+
+    return tickers.map((ticker) => {
+      const snap = byTicker.get(ticker);
+      const price = snap?.lastTrade?.p ?? snap?.min?.c ?? snap?.day?.c ?? snap?.prevDay?.c;
+      if (typeof price !== 'number') return { ticker, error: 'No live price available' };
+      return { ticker, price };
+    });
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    return tickers.map((ticker) => ({ ticker, error }));
+  }
+}

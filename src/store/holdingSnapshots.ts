@@ -39,6 +39,9 @@ type HoldingSnapshotStore = {
   addLot: (id: string, holdingIndex: number) => void;
   removeLot: (id: string, holdingIndex: number, lotIndex: number) => void;
   updateLot: (id: string, holdingIndex: number, lotIndex: number, partial: Partial<Lot>) => void;
+  // Buy Max: adds as many shares as the snapshot's settlement fund can
+  // afford at this lot's own purchase price, debiting the fund by the cost.
+  buyMaxAtPrice: (id: string, holdingIndex: number, lotIndex: number) => void;
 };
 
 export const useHoldingSnapshotStore = create<HoldingSnapshotStore>()(
@@ -117,6 +120,17 @@ export const useHoldingSnapshotStore = create<HoldingSnapshotStore>()(
     updateLot: (id, holdingIndex, lotIndex, partial) =>
       set((s) => {
         Object.assign(s.snapshots[id].holdings[holdingIndex].lots[lotIndex], partial);
+      }),
+
+    buyMaxAtPrice: (id, holdingIndex, lotIndex) =>
+      set((s) => {
+        const snap = s.snapshots[id];
+        const lot = snap.holdings[holdingIndex].lots[lotIndex];
+        if (lot.purchasePrice <= 0) return;
+        const affordable = Math.floor(snap.settlement_fund / lot.purchasePrice);
+        if (affordable <= 0) return;
+        lot.quantity += affordable;
+        snap.settlement_fund -= affordable * lot.purchasePrice;
       }),
   }))
 );

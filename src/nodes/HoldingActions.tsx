@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { type HoldingActionsNode } from './types';
 import {
+  actionsAsSnapshotSeed,
   useHoldingActions,
   useHoldingActionsStore,
   type ActionsHolding,
@@ -100,16 +101,7 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
     const position = findOpenSpot(getIntersectingNodes, origin);
     const newId = getNodeId();
 
-    initHolding(newId, {
-      label: data.label,
-      date: data.date,
-      holdings: data.holdings.map((h) => ({
-        ticker: h.ticker,
-        lots: h.lots.map((l) => ({ ticker: l.ticker, quantity: l.quantity, purchasePrice: l.purchasePrice })),
-      })),
-      settlement_fund: data.settlement_fund,
-      marketOpenPrices: data.marketOpenPrices ? structuredClone(data.marketOpenPrices) : null,
-    });
+    initHolding(newId, actionsAsSnapshotSeed(data));
 
     setNodes((nodes) => nodes.concat({ id: newId, type: 'holding-snapshot', position, data: {} }));
     setEdges((edges) => addEdge({ source: id, target: newId, sourceHandle: null, targetHandle: null }, edges));
@@ -147,7 +139,7 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
   }
 
   return (
-    <Card className="w-80 py-3 gap-3">
+    <Card className="w-96 py-3 gap-3">
       <Handle type="target" position={Position.Left} />
 
       <CardHeader className="flex flex-col gap-2 px-3">
@@ -202,6 +194,12 @@ export function HoldingActions({ id }: NodeProps<HoldingActionsNode>) {
             />
           </div>
         </div>
+
+        <Separator />
+
+        <Button className="nodrag" onClick={handleCreateSnapshot}>
+          Create New Snapshot
+        </Button>
 
         <Separator />
 
@@ -299,7 +297,7 @@ function ActionsDiffView({ data }: { data: ReturnType<typeof useHoldingActions> 
 }
 
 function ActionsMarketOpenPrices({ prices }: { prices: Record<string, number> }) {
-  const entries = Object.entries(prices);
+  const entries = Object.entries(prices).sort(([a], [b]) => a.localeCompare(b));
   if (entries.length === 0) return null;
 
   return (
@@ -327,7 +325,6 @@ function ActionsHoldingCard({
   holding: ActionsHolding;
 }) {
   const updateHoldingTicker = useHoldingActionsStore((s) => s.updateHoldingTicker);
-  const removeStockHolding = useHoldingActionsStore((s) => s.removeStockHolding);
   const buyNewLot = useHoldingActionsStore((s) => s.buyNewLot);
   const sellAllLots = useHoldingActionsStore((s) => s.sellAllLots);
   const data = useHoldingActions(nodeId);
@@ -338,11 +335,6 @@ function ActionsHoldingCard({
       (v: string) => updateHoldingTicker(nodeId, holdingIndex, v),
       [nodeId, holdingIndex, updateHoldingTicker]
     )
-  );
-  const canRemoveHolding = holding.lots.every((l) => l.quantity <= 0);
-  const handleRemove = useCallback(
-    () => removeStockHolding(nodeId, holdingIndex),
-    [nodeId, holdingIndex, removeStockHolding]
   );
   const handleAddLot = useCallback(() => buyNewLot(nodeId, holdingIndex), [nodeId, holdingIndex, buyNewLot]);
   const handleSellAllLots = useCallback(
@@ -377,8 +369,9 @@ function ActionsHoldingCard({
           variant="ghost"
           size="icon-sm"
           className="nodrag text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
-          onClick={handleRemove}
-          disabled={!canRemoveHolding}
+          onClick={handleSellAllLots}
+          title="Sell all lots in this holding"
+          disabled={!canSellAllLots}
         >
           <Trash2 />
         </Button>
@@ -415,6 +408,7 @@ function ActionsLotRow({
 }) {
   const updateLot = useHoldingActionsStore((s) => s.updateLot);
   const buyOneShare = useHoldingActionsStore((s) => s.buyOneShare);
+  const buyMaxShares = useHoldingActionsStore((s) => s.buyMaxShares);
   const sellOneShare = useHoldingActionsStore((s) => s.sellOneShare);
   const sellAllShares = useHoldingActionsStore((s) => s.sellAllShares);
   const data = useHoldingActions(nodeId);
@@ -429,6 +423,10 @@ function ActionsLotRow({
   const handleBuy = useCallback(
     () => buyOneShare(nodeId, holdingIndex, lotIndex),
     [nodeId, holdingIndex, lotIndex, buyOneShare]
+  );
+  const handleBuyMax = useCallback(
+    () => buyMaxShares(nodeId, holdingIndex, lotIndex),
+    [nodeId, holdingIndex, lotIndex, buyMaxShares]
   );
   const handleSell = useCallback(
     () => sellOneShare(nodeId, holdingIndex, lotIndex),
@@ -466,7 +464,7 @@ function ActionsLotRow({
             : 'Bought this session — trades freely'
         }
         placeholder="Qty"
-        className="nodrag h-7 w-14 text-xs"
+        className="nodrag h-7 min-w-12 px-2 text-xs"
       />
       <Button
         variant="ghost"
@@ -488,7 +486,7 @@ function ActionsLotRow({
           value={purchasePrice}
           onChange={(e) => setPurchasePrice(Math.round(Number(e.target.value) || 0))}
           placeholder="Price"
-          className="nodrag h-7 pl-4 text-xs"
+          className="nodrag h-7 pl-4 min-w-20 text-xs"
         />
       </div>
       <Button
@@ -500,6 +498,16 @@ function ActionsLotRow({
         disabled={!canSell}
       >
         Sell All
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="nodrag h-7 px-2 text-xs text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+        onClick={handleBuyMax}
+        title="Buy as many shares as the settlement fund allows"
+        disabled={!canBuy}
+      >
+        Buy Max
       </Button>
     </div>
   );

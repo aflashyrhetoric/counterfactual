@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 import { type HoldingSnapshotNode, type Lot, type StockHolding } from './types';
 import { useHoldingSnapshot, useHoldingSnapshotStore } from '@/store/holdingSnapshots';
-import { fetchMarketOpenPrices } from '@/lib/massive';
+import { fetchLiveStockPrices, fetchMarketOpenPrices } from '@/lib/massive';
 import { valueOfSnapshot } from '@/lib/valuation';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,6 +45,7 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
   const addHolding = useHoldingSnapshotStore((s) => s.addHolding);
   const setMarketOpenPrices = useHoldingSnapshotStore((s) => s.setMarketOpenPrices);
   const [fetchingPrices, setFetchingPrices] = useState(false);
+  const [fetchingLivePrices, setFetchingLivePrices] = useState(false);
   const [holdingsExpanded, setHoldingsExpanded] = useState(false);
 
   const [label, setLabel] = useDebouncedField(
@@ -82,8 +83,35 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
     }
   }, [id, data.holdings, data.date, setMarketOpenPrices]);
 
+  // Overwrites the same `marketOpenPrices` field with the most recent
+  // trade price instead of a price pinned to `data.date`.
+  const handleFetchLivePrices = useCallback(async () => {
+    const tickers = [...new Set(data.holdings.map((h) => h.ticker).filter(Boolean))];
+    if (tickers.length === 0) return;
+
+    setFetchingLivePrices(true);
+    try {
+      const results = await fetchLiveStockPrices(tickers);
+      const prices: Record<string, number> = {};
+      const failed: string[] = [];
+      for (const r of results) {
+        if (typeof r.price === 'number') prices[r.ticker] = r.price;
+        else failed.push(r.ticker);
+      }
+      if (Object.keys(prices).length > 0) setMarketOpenPrices(id, prices);
+      if (failed.length > 0) toast.error(`Couldn't fetch live prices for ${failed.join(', ')}`);
+    } finally {
+      setFetchingLivePrices(false);
+    }
+  }, [id, data.holdings, setMarketOpenPrices]);
+
   const selectedDate = data.date ? parseISO(data.date) : undefined;
-  const totalValue = useMemo(() => valueOfSnapshot(data), [data]);
+
+  // Total value uses this snapshot's own recorded prices — what the
+  // position was worth on `data.date`, not today. Fetching prices (above)
+  // is what keeps this current for this snapshot's own date; for a
+  // "right now" figure, make a new snapshot dated today instead.
+  const totalValue = useMemo(() => valueOfSnapshot(data, data.marketOpenPrices), [data]);
 
   return (
     <Card className="w-80 bg-blue-50 py-3 gap-3">
@@ -106,6 +134,16 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
             disabled={fetchingPrices || !data.date || data.holdings.length === 0}
           >
             <RefreshCw className={fetchingPrices ? 'animate-spin' : undefined} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="nodrag h-7 shrink-0 px-2 text-xs text-muted-foreground"
+            title="Fetch the most recent live price"
+            onClick={handleFetchLivePrices}
+            disabled={fetchingLivePrices || data.holdings.length === 0}
+          >
+            {fetchingLivePrices ? '…' : 'LIVE $'}
           </Button>
         </div>
 
@@ -188,7 +226,7 @@ export function HoldingSnapshot({ id }: NodeProps<HoldingSnapshotNode>) {
 }
 
 function MarketOpenPrices({ prices }: { prices: Record<string, number> }) {
-  const entries = Object.entries(prices);
+  const entries = Object.entries(prices).sort(([a], [b]) => a.localeCompare(b));
   if (entries.length === 0) return null;
 
   return (
@@ -304,6 +342,8 @@ function LotRow({
 }) {
   const updateLot = useHoldingSnapshotStore((s) => s.updateLot);
   const removeLot = useHoldingSnapshotStore((s) => s.removeLot);
+  const buyMaxAtPrice = useHoldingSnapshotStore((s) => s.buyMaxAtPrice);
+  const data = useHoldingSnapshot(nodeId);
 
   const [quantity, setQuantity] = useDebouncedField(
     lot.quantity,
@@ -323,6 +363,11 @@ function LotRow({
     () => removeLot(nodeId, holdingIndex, lotIndex),
     [nodeId, holdingIndex, lotIndex, removeLot]
   );
+  const handleBuyMax = useCallback(
+    () => buyMaxAtPrice(nodeId, holdingIndex, lotIndex),
+    [nodeId, holdingIndex, lotIndex, buyMaxAtPrice]
+  );
+  const canBuyMax = lot.purchasePrice > 0 && data.settlement_fund >= lot.purchasePrice;
 
   return (
     <div className="flex items-center gap-1.5">
@@ -337,21 +382,31 @@ function LotRow({
         value={quantity}
         onChange={(e) => setQuantity(Number(e.target.value) || 0)}
         placeholder="Qty"
-        className="nodrag h-7 w-14 text-xs"
+        className="nodrag h-7 flex-1 text-xs"
       />
-      <div className="relative flex-1">
+      <div className="relative w-24 shrink-0">
         <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
           $
         </span>
         <Input
           type="number"
-          step="1"
+          step="0.01"
           value={purchasePrice}
-          onChange={(e) => setPurchasePrice(Math.round(Number(e.target.value) || 0))}
+          onChange={(e) => setPurchasePrice(Math.round((Number(e.target.value) || 0) * 100) / 100)}
           placeholder="Price"
           className="nodrag h-7 pl-4 text-xs"
         />
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="nodrag h-7 px-2 text-xs text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+        onClick={handleBuyMax}
+        title="Buy as many shares as the settlement fund allows at this price"
+        disabled={!canBuyMax}
+      >
+        Buy Max
+      </Button>
       <Button
         variant="ghost"
         size="icon-sm"

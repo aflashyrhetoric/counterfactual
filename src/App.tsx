@@ -25,7 +25,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { findOpenSpot, getNodeId } from './lib/flow';
 import { useHoldingSnapshotStore } from './store/holdingSnapshots';
-import { useHoldingActionsStore } from './store/holdingActions';
+import { actionsAsSnapshotSeed, useHoldingActionsStore } from './store/holdingActions';
 import { useAnalysisStore } from './store/analysisNodes';
 import { loadCanvasState, saveCanvasState } from './lib/persistence';
 
@@ -42,6 +42,7 @@ function Flow() {
   const initActions = useHoldingActionsStore((s) => s.initActions);
   const removeActions = useHoldingActionsStore((s) => s.removeActions);
   const loadActions = useHoldingActionsStore((s) => s.loadActions);
+  const lockActions = useHoldingActionsStore((s) => s.lock);
   const initAnalysis = useAnalysisStore((s) => s.initAnalysis);
   const removeAnalysis = useAnalysisStore((s) => s.removeAnalysis);
   const loadAnalyses = useAnalysisStore((s) => s.loadAnalyses);
@@ -114,31 +115,51 @@ function Flow() {
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
       if (!connectionState.fromHandle || connectionState.toNode) return;
-      if (connectionState.fromNode?.type !== 'holding-snapshot') return;
+      const fromType = connectionState.fromNode?.type;
+      if (fromType !== 'holding-snapshot' && fromType !== 'holding-actions') return;
 
       const sourceId = connectionState.fromHandle.nodeId;
-      const sourceData = useHoldingSnapshotStore.getState().snapshots[sourceId];
-      if (!sourceData) return;
-
       const point = 'changedTouches' in event ? event.changedTouches[0] : event;
       const origin = screenToFlowPosition({ x: point.clientX, y: point.clientY });
       const position = findOpenSpot(getIntersectingNodes, origin);
       const newId = getNodeId();
 
-      initActions(newId, {
-        label: sourceData.label,
-        date: sourceData.date,
-        holdings: structuredClone(sourceData.holdings),
-        settlement_fund: sourceData.settlement_fund,
-        marketOpenPrices: sourceData.marketOpenPrices ? structuredClone(sourceData.marketOpenPrices) : null,
-      });
+      if (fromType === 'holding-snapshot') {
+        const sourceData = useHoldingSnapshotStore.getState().snapshots[sourceId];
+        if (!sourceData) return;
 
-      setNodes((nodes) => nodes.concat({ id: newId, type: 'holding-actions', position, data: {} }));
+        initActions(newId, {
+          label: sourceData.label,
+          date: sourceData.date,
+          holdings: structuredClone(sourceData.holdings),
+          settlement_fund: sourceData.settlement_fund,
+          marketOpenPrices: sourceData.marketOpenPrices ? structuredClone(sourceData.marketOpenPrices) : null,
+        });
+
+        setNodes((nodes) => nodes.concat({ id: newId, type: 'holding-actions', position, data: {} }));
+        setEdges((edges) =>
+          addEdge({ source: sourceId, target: newId, sourceHandle: null, targetHandle: null }, edges)
+        );
+        return;
+      }
+
+      // fromType === 'holding-actions': same clone-and-connect as "Create
+      // New Snapshot" — every seed is deep-cloned, so snapshots dropped
+      // from the same actions node never share state with each other.
+      // Works even after the node is already locked (e.g. the button was
+      // pressed once already) — locked only freezes further edits to the
+      // actions node itself, not its ability to seed more snapshots.
+      const sourceData = useHoldingActionsStore.getState().actions[sourceId];
+      if (!sourceData) return;
+
+      initHolding(newId, actionsAsSnapshotSeed(sourceData));
+      setNodes((nodes) => nodes.concat({ id: newId, type: 'holding-snapshot', position, data: {} }));
       setEdges((edges) =>
         addEdge({ source: sourceId, target: newId, sourceHandle: null, targetHandle: null }, edges)
       );
+      lockActions(sourceId);
     },
-    [screenToFlowPosition, getIntersectingNodes, setNodes, setEdges, initActions]
+    [screenToFlowPosition, getIntersectingNodes, setNodes, setEdges, initActions, initHolding, lockActions]
   );
 
   function addHoldingSnapshotNode() {

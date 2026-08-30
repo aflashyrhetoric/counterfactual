@@ -60,7 +60,6 @@ type HoldingActionsStore = {
   setMarketOpenPrices: (id: string, prices: Record<string, number>) => void;
 
   addHolding: (id: string) => void;
-  removeStockHolding: (id: string, holdingIndex: number) => void;
   updateHoldingTicker: (id: string, holdingIndex: number, ticker: string) => void;
 
   updateLot: (id: string, holdingIndex: number, lotIndex: number, partial: Partial<Lot>) => void;
@@ -71,6 +70,9 @@ type HoldingActionsStore = {
   // Plus: reverts a previous sellOneShare on this specific lot, capped at
   // the lot's originalQuantity.
   buyOneShare: (id: string, holdingIndex: number, lotIndex: number) => void;
+  // Buy Max: repeats buyOneShare as many times as the settlement fund (and
+  // the lot's originalQuantity ceiling) allow, in one step.
+  buyMaxShares: (id: string, holdingIndex: number, lotIndex: number) => void;
   // Minus: sells one share from this specific lot, down to 0.
   sellOneShare: (id: string, holdingIndex: number, lotIndex: number) => void;
   // Sell All: sells every remaining share in this specific lot at once.
@@ -150,14 +152,6 @@ export const useHoldingActionsStore = create<HoldingActionsStore>()(
         s.actions[id].holdings.push({ ticker: '', lots: [emptyActionsLot()] });
       }),
 
-    removeStockHolding: (id, holdingIndex) =>
-      set((s) => {
-        if (s.actions[id].locked) return;
-        const h = s.actions[id].holdings[holdingIndex];
-        if (h.lots.some((l) => l.quantity > 0)) return; // would destroy a cash-backed position
-        s.actions[id].holdings.splice(holdingIndex, 1);
-      }),
-
     updateHoldingTicker: (id, holdingIndex, ticker) =>
       set((s) => {
         if (s.actions[id].locked) return;
@@ -202,6 +196,22 @@ export const useHoldingActionsStore = create<HoldingActionsStore>()(
         entry.settlement_fund -= price;
       }),
 
+    buyMaxShares: (id, holdingIndex, lotIndex) =>
+      set((s) => {
+        const entry = s.actions[id];
+        if (entry.locked) return;
+        const holding = entry.holdings[holdingIndex];
+        const lot = holding.lots[lotIndex];
+        const price = entry.marketOpenPrices?.[holding.ticker];
+        if (price == null || price <= 0) return;
+        const remainingCapacity = lot.originalQuantity - lot.quantity;
+        const affordable = Math.floor(entry.settlement_fund / price);
+        const toBuy = Math.max(0, Math.min(remainingCapacity, affordable));
+        if (toBuy <= 0) return;
+        lot.quantity += toBuy;
+        entry.settlement_fund -= toBuy * price;
+      }),
+
     sellOneShare: (id, holdingIndex, lotIndex) =>
       set((s) => {
         const entry = s.actions[id];
@@ -244,4 +254,27 @@ export const useHoldingActionsStore = create<HoldingActionsStore>()(
 
 export function useHoldingActions(id: string): HoldingActionsNodeData {
   return useHoldingActionsStore((s) => s.actions[id] ?? EMPTY_HOLDING_ACTIONS);
+}
+
+// A fresh, fully independent snapshot seed from this actions node's current
+// state — every call deep-clones holdings/prices, so snapshots created from
+// the same actions node (e.g. one per drag from its handle) never share
+// references and can't affect each other after the fact. A fully-sold-down
+// lot/holding is closed, not "zero shares of something we still hold", so
+// it's dropped rather than carried into the new snapshot.
+export function actionsAsSnapshotSeed(data: HoldingActionsNodeData): Partial<HoldingSnapshotNodeData> {
+  return {
+    label: data.label,
+    date: data.date,
+    holdings: data.holdings
+      .map((h) => ({
+        ticker: h.ticker,
+        lots: h.lots
+          .filter((l) => l.quantity > 0)
+          .map((l) => ({ ticker: l.ticker, quantity: l.quantity, purchasePrice: l.purchasePrice })),
+      }))
+      .filter((h) => h.lots.length > 0),
+    settlement_fund: data.settlement_fund,
+    marketOpenPrices: data.marketOpenPrices ? structuredClone(data.marketOpenPrices) : null,
+  };
 }
